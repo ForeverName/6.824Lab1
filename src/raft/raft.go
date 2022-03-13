@@ -49,14 +49,21 @@ type ApplyMsg struct {
 	CommandIndex int
 }
 
-//定义一个结构来保存有关每个日志条目的信息。
+//定义一个结构来记录追加日志RPC的信息。
 type AppendEntries struct {
 	Term int // 领导者的任期
 	LeaderId int // 领导者Id，因此 follower 可以对客户端进行重定向（因为客户端必须发消息给领导者而不是跟随者）
 	PrevLogIndex int // 紧邻新日志条目之前的那个日志条目的索引
 	PrevLogTerm int // 紧邻新日志条目之前的那个日志条目的任期
-	Entries []AppendEntries // 需要被保存的日志条目（被当作心跳使用时则为空）
+	Entries []Entry // 需要被保存的日志条目（被当作心跳使用时则为空）
 	LeaderCommit int// 领导者的已知已提交的最高的日志条目的索引
+}
+
+//日志条目信息
+type Entry struct {
+	Term int
+	Command interface{}
+	LogIndex int //日志条目索引
 }
 
 //追加条目或者心跳通信 的返回值
@@ -92,7 +99,7 @@ type Raft struct {
 	//持久性
 	currentTerm int //服务器已知最新的任期
 	votedFor int  //投给哪个服务器选票，-1的话就表示还没有投给任何服务器
-	log []*AppendEntries // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
+	log []*Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
 	role int //表明Raft节点的目前身份
 
 	//易失性
@@ -215,6 +222,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			args.CandidateId, rf.me, args.CandidateId,  args.Term, rf.me, rf.currentTerm)
 	}else if args.Term == rf.currentTerm {
 		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。
+		//首先要比较哪个日志更新，只有日志更加新的才能有资格成为领导者
+
 		if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
@@ -336,9 +345,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := true
-
 	// Your code here (2B).
-
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	//index =
+	term = rf.currentTerm
+	isLeader = rf.role == Leader
 
 	return index, term, isLeader
 }
@@ -431,6 +443,8 @@ func (rf *Raft) run() {
 					}
 					if len(rf.log) != 0 {
 						args.LastLogTerm = rf.log[len(rf.log)-1].Term
+					}else {
+
 					}
 					reply := RequestVoteReply{}
 					rf.mu.Unlock()
