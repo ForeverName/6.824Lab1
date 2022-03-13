@@ -306,7 +306,10 @@ func (cfg *config) checkOneLeader() int {
 
 		leaders := make(map[int][]int)
 		for i := 0; i < cfg.n; i++ {
+			//DPrintf("peer[%d]是否连接:%v,", i, cfg.connected[i])
 			if cfg.connected[i] {
+				//_, b := cfg.rafts[i].GetState()
+				//DPrintf("peer[%d]是否为leader:%t", i, b)
 				if term, leader := cfg.rafts[i].GetState(); leader {
 					leaders[term] = append(leaders[term], i)
 				}

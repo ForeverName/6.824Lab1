@@ -1,52 +1,52 @@
 package labrpc
 
-//
+// 基于通道的 RPC
 // channel-based RPC, for 824 labs.
 //
 // simulates a network that can lose requests, lose replies,
 // delay messages, and entirely disconnect particular hosts.
-//
-// we will use the original labrpc.go to test your code for grading.
+// 模拟可能丢失请求、丢失回复、延迟消息和完全断开特定主机的网络。
+// we will use the original labrpc.go to test your code for grading. 我们将使用原始的 labrpc.go 来测试您的代码以进行评分。
 // so, while you can modify this code to help you debug, please
 // test against the original before submitting.
-//
-// adapted from Go net/rpc/server.go.
+// 因此，虽然您可以修改此代码以帮助您调试，但请在提交前对原始代码进行测试。
+// adapted from Go net/rpc/server.go. 改编自 Go net/rpc/server.go。
 //
 // sends labgob-encoded values to ensure that RPCs
 // don't include references to program objects.
+// 发送 labgob 编码的值以确保 RPC 不包含对程序对象的引用。
+// net := MakeNetwork() -- holds network, clients, servers.  保存网络、客户端、服务器。
+// end := net.MakeEnd(endname) -- create a client end-point, to talk to one server. 创建一个客户端端点，与一台服务器通信。
+// net.AddServer(servername, server) -- adds a named server to network. 将命名服务器添加到网络。
+// net.DeleteServer(servername) -- eliminate the named server. 消除命名服务器。
+// net.Connect(endname, servername) -- connect a client to a server. 将客户端连接到服务器。
+// net.Enable(endname, enabled) -- enable/disable a client. 启用/禁用客户端。
+// net.Reliable(bool) -- false means drop/delay messages false 表示丢弃/延迟消息
 //
-// net := MakeNetwork() -- holds network, clients, servers.
-// end := net.MakeEnd(endname) -- create a client end-point, to talk to one server.
-// net.AddServer(servername, server) -- adds a named server to network.
-// net.DeleteServer(servername) -- eliminate the named server.
-// net.Connect(endname, servername) -- connect a client to a server.
-// net.Enable(endname, enabled) -- enable/disable a client.
-// net.Reliable(bool) -- false means drop/delay messages
-//
-// end.Call("Raft.AppendEntries", &args, &reply) -- send an RPC, wait for reply.
-// the "Raft" is the name of the server struct to be called.
-// the "AppendEntries" is the name of the method to be called.
+// end.Call("Raft.AppendEntries", &args, &reply) -- send an RPC, wait for reply.     发送 RPC，等待回复。
+// the "Raft" is the name of the server struct to be called.         “Raft”是要调用的服务器结构的名称。
+// the "AppendEntries" is the name of the method to be called.       “AppendEntries”是要调用的方法的名称。
 // Call() returns true to indicate that the server executed the request
-// and the reply is valid.
+// and the reply is valid. call()     返回 true 表示服务器执行了请求并且回复有效。
 // Call() returns false if the network lost the request or reply
-// or the server is down.
+// or the server is down.             如果网络丢失请求或回复或服务器已关闭，则 Call() 返回 false。
 // It is OK to have multiple Call()s in progress at the same time on the
-// same ClientEnd.
+// same ClientEnd.					  在同一个 ClientEnd 上同时进行多个 Call() 是可以的。
 // Concurrent calls to Call() may be delivered to the server out of order,
-// since the network may re-order messages.
+// since the network may re-order messages.        对 Call() 的并发调用可能会乱序传递到服务器，因为网络可能会重新排序消息。
 // Call() is guaranteed to return (perhaps after a delay) *except* if the
-// handler function on the server side does not return.
+// handler function on the server side does not return.    如果服务器端的处理函数没有返回，则 Call() 保证返回（可能在延迟之后）*except*。
 // the server RPC handler function must declare its args and reply arguments
 // as pointers, so that their types exactly match the types of the arguments
 // to Call().
-//
+// 服务器 RPC 处理函数必须将其 args 和回复参数声明为指针，以便它们的类型与 Call() 的参数类型完全匹配。
 // srv := MakeServer()
-// srv.AddService(svc) -- a server can have multiple services, e.g. Raft and k/v
-//   pass srv to net.AddServer()
+// srv.AddService(svc) -- a server can have multiple services, e.g. Raft and k/v 服务器可以有多个服务，例如 Raft和 k/v
+//   pass srv to net.AddServer()   将 srv 传递给 net.AddServer()
 //
-// svc := MakeService(receiverObject) -- obj's methods will handle RPCs
-//   much like Go's rpcs.Register()
-//   pass svc to srv.AddService()
+// svc := MakeService(receiverObject) -- obj's methods will handle RPCs  obj 的方法将处理 RPCs
+//   much like Go's rpcs.Register()  很像 Go 的 rpcs.Register()
+//   pass svc to srv.AddService()    将 svc 传递给 srv.AddService()
 //
 
 import "../labgob"
@@ -73,9 +73,9 @@ type replyMsg struct {
 }
 
 type ClientEnd struct {
-	endname interface{}   // this end-point's name
-	ch      chan reqMsg   // copy of Network.endCh
-	done    chan struct{} // closed when Network is cleaned up
+	endname interface{}   // this end-point's name  此端点的名称
+	ch      chan reqMsg   // copy of Network.endCh  Network.endCh 的副本
+	done    chan struct{} // closed when Network is cleaned up .清理网络时关闭
 }
 
 // send an RPC, wait for the reply.
