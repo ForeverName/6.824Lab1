@@ -99,7 +99,7 @@ type Raft struct {
 	//持久性
 	currentTerm int //服务器已知最新的任期
 	votedFor int  //投给哪个服务器选票，-1的话就表示还没有投给任何服务器
-	log []*Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
+	log []Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
 	role int //表明Raft节点的目前身份
 
 	//易失性
@@ -215,31 +215,29 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	//          2A  接收到其他候选人的选举请求
 	DPrintf("peer[%d]向peer[%d]发送选举RPC消息", args.CandidateId, rf.me)
+	rf.timer = time.Now()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的term:=[%d],peer[%d]的term:=[%d]",
 			args.CandidateId, rf.me, args.CandidateId,  args.Term, rf.me, rf.currentTerm)
 	}else if args.Term == rf.currentTerm {
-		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。
-		//首先要比较哪个日志更新，只有日志更加新的才能有资格成为领导者
-
-		if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+		//首先要比较哪个日志更新，只有日志更加新的才能有资格成为领导者 （候选人的日志至少和自己一样新）2B
+		if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.CompareWhichIsNewer(args.LastLogIndex, args.LastLogTerm){
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
-			rf.timer = time.Now()
 		}
 		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
 	} else if args.Term > rf.currentTerm {
 		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Foller
 		rf.currentTerm = args.Term
 		rf.role = Follower
-		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。这里还没有判断哪个最新，2A暂时不需要
-		reply.VoteGranted = true
-		rf.votedFor = args.CandidateId
-		rf.timer = time.Now()
+		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。这里还没有判断哪个最新， 2B
+		if rf.CompareWhichIsNewer(args.LastLogIndex, args.LastLogTerm) {
+			reply.VoteGranted = true
+			rf.votedFor = args.CandidateId
+		}
 	}
-
 }
 
 // 处理 心跳或追加日志 的RPC handler
@@ -251,41 +249,72 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.timer = time.Now()
-	//说明是旧领导者发的心跳，忽略即可
+	//说明是旧领导者发的心跳，忽略即可  rule1
 	if args.Term < rf.currentTerm {
-		DPrintf("peer[%d]收到旧领导者peer[%d]在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
+		//DPrintf("peer[%d]收到旧领导者peer[%d]在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		return
 	}
-	DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
-	rf.role = Follower
-	if args.Term >= rf.currentTerm {
-		rf.currentTerm = args.Term
+	//说明是心跳
+	if len(args.Entries) == 0 {
+		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
 		rf.role = Follower
-		rf.votedFor = -1
-	}
-	/*if len(args.Entries) == 0 {
 		if args.Term >= rf.currentTerm {
 			rf.currentTerm = args.Term
-			//rf.role = Follower
+			rf.role = Follower
 			rf.votedFor = -1
 		}
-		//这个为心跳
 		return
-	}else {
-		//这个为真正的追加日志操作
-
-		//返回假 如果领导者的任期 小于 接收者的当前任期
-		if args.Term < rf.currentTerm {
-			reply.Success = false
-		}else if  false { //暂时这样写
-			//在接收者日志中 如果能找到一个和prevLogIndex以及prevLogTerm一样的索引和任期
-			//的日志条目 则继续执行下面的步骤 否则返回假
-		}
-	}*/
+	}
+	// 2B  rule2 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
+	if !rf.Rule2(args.PrevLogIndex, args.PrevLogTerm) {
+		reply.Success = false
+		return
+	}
+	//2B rule3 如果一个已经存在的条目和新条目（即刚刚接收到的条目）发生了冲突（因为索引相同，任期不同），那么就删除这个已经存在的条目以及它之后的所有条目
+	
 
 }
+
+//追加条目 rule2
+func (rf *Raft) Rule2(PrevLogIndex int, PrevLogTerm int) bool {
+	for _, value := range rf.log {
+		if value.LogIndex == PrevLogIndex && value.Term == PrevLogTerm {
+			return true
+		}
+	}
+	return false
+}
+
+//追加条目 rule3
+func (rf *Raft) Rule3()  {
+	
+}
+//比较两个节点的日志哪一个更新,true表示请求方更加新，false表示应答方更加新
+func (rf *Raft) CompareWhichIsNewer(index int, term int) bool {
+	//Raft 通过比较两份日志中最后一条日志条目的索引值和任期号定义谁的日志比较新。如果两份日志最后
+	//的条目的任期号不同，那么任期号大的日志更加新。如果两份日志最后的条目任期号相同，那么日志比
+	//较长的那个就更加新。
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if len(rf.log) == 0 {
+		return true
+	}
+	if term > rf.log[len(rf.log)-1].Term {
+		return true
+	}else if term == rf.log[len(rf.log)-1].Term {
+		//那么日志比较长的那个就更加新。
+		if index >= rf.log[len(rf.log)-1].LogIndex {
+			return true
+		}else {
+			return false
+		}
+	}else {
+		return false
+	}
+}
+
 
 //
 // example code to send a RequestVote RPC to a server.                     将 RequestVote RPC 发送到服务器的示例代码。
@@ -348,10 +377,20 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// Your code here (2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	//index =
+	if rf.killed() {
+		return -1, -1 , false
+	}
+	if rf.role != Leader {
+		return -1, -1, false
+	}
+	if len(rf.log) == 0 {
+		index = 1
+	}else {
+		index = rf.log[len(rf.log)-1].LogIndex + 1
+	}
 	term = rf.currentTerm
-	isLeader = rf.role == Leader
-
+	isLeader = true
+	rf.log = append(rf.log, Entry{Term: term, Command: command, LogIndex: index})
 	return index, term, isLeader
 }
 
@@ -443,8 +482,6 @@ func (rf *Raft) run() {
 					}
 					if len(rf.log) != 0 {
 						args.LastLogTerm = rf.log[len(rf.log)-1].Term
-					}else {
-
 					}
 					reply := RequestVoteReply{}
 					rf.mu.Unlock()
@@ -523,10 +560,7 @@ func (rf *Raft) run() {
 	}
 }
 
-//问题：Leader中间故障掉线之后再次连接会出现死锁问题
-//测试代码的cfg.rafts[i].GetState()访问GetState()的锁进不去
-//考虑是掉线之后没有及时释放锁。
-//就是如果一开始peer[0]为leader，然后掉线，在之后重连之后GetState()就永远获取不到锁了
+
 //领导者周期性的发送心跳或者追加条目
 func (rf *Raft) AppendEntyiesOrHeartbeat() {
 	//   2A 目前先不追加条目，只是发送心跳
