@@ -521,10 +521,6 @@ func (rf *Raft) run() {
 	}
 }
 
-//问题：Leader中间故障掉线之后再次连接会出现死锁问题
-//测试代码的cfg.rafts[i].GetState()访问GetState()的锁进不去
-//考虑是掉线之后没有及时释放锁。
-//就是如果一开始peer[0]为leader，然后掉线，在之后重连之后GetState()就永远获取不到锁了
 //领导者周期性的发送心跳或者追加条目
 func (rf *Raft) AppendEntyiesOrHeartbeat() {
 	//   2A 目前先不追加条目，只是发送心跳
