@@ -443,8 +443,6 @@ func (rf *Raft) run() {
 					}
 					if len(rf.log) != 0 {
 						args.LastLogTerm = rf.log[len(rf.log)-1].Term
-					}else {
-
 					}
 					reply := RequestVoteReply{}
 					rf.mu.Unlock()
