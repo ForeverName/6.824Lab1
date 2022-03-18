@@ -15,10 +15,9 @@ package raft
 //   each time a new entry is committed to the log, each Raft peer
 //   should send an ApplyMsg to the service (or tester)
 //   in the same server.
-//  每次向日志提交新条目时，每个 Raft 对等点都应向同一服务器中的服务（或测试者）发送 ApplyMsg。
+//  每次向日志提交新条目时，每个 Raft peers 都应向同一服务器中的服务（或测试者）发送 ApplyMsg。
 
 import (
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -100,6 +99,9 @@ type Raft struct {
 	currentTerm int //服务器已知最新的任期
 	votedFor int  //投给哪个服务器选票，-1的话就表示还没有投给任何服务器
 	log []Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
+
+	applyCh chan ApplyMsg
+	applyCond *sync.Cond
 	role int //表明Raft节点的目前身份
 
 	//易失性
@@ -201,122 +203,6 @@ type RequestVoteReply struct {
 }
 
 //
-// example RequestVote RPC handler.
-//
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	//Raft 通过比较两份日志中最后一条日志条目的索引值和任期号定义谁的日志比较新。如果两份日志最后
-	//的条目的任期号不同，那么任期号大的日志更加新。如果两份日志最后的条目任期号相同，那么日志比
-	//较长的那个就更加新。
-
-	//如果接收到的 RPC 请求或响应中，任期号 T > currentTerm ，那么就令 currentTerm 等于 T，并
-	//切换状态为跟随者
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	// Your code here (2A, 2B).
-	//          2A  接收到其他候选人的选举请求
-	DPrintf("peer[%d]向peer[%d]发送选举RPC消息", args.CandidateId, rf.me)
-	rf.timer = time.Now()
-	if args.Term < rf.currentTerm {
-		reply.Term = rf.currentTerm
-		reply.VoteGranted = false
-		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的term:=[%d],peer[%d]的term:=[%d]",
-			args.CandidateId, rf.me, args.CandidateId,  args.Term, rf.me, rf.currentTerm)
-	}else if args.Term == rf.currentTerm {
-		//首先要比较哪个日志更新，只有日志更加新的才能有资格成为领导者 （候选人的日志至少和自己一样新）2B
-		if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.CompareWhichIsNewer(args.LastLogIndex, args.LastLogTerm){
-			reply.VoteGranted = true
-			rf.votedFor = args.CandidateId
-		}
-		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
-	} else if args.Term > rf.currentTerm {
-		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Foller
-		rf.currentTerm = args.Term
-		rf.role = Follower
-		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。这里还没有判断哪个最新， 2B
-		if rf.CompareWhichIsNewer(args.LastLogIndex, args.LastLogTerm) {
-			reply.VoteGranted = true
-			rf.votedFor = args.CandidateId
-		}
-	}
-}
-
-// 处理 心跳或追加日志 的RPC handler
-func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesReply) {
-	//Raft 通过比较两份日志中最后一条日志条目的索引值和任期号定义谁的日志比较新。如果两份日志最后
-	//的条目的任期号不同，那么任期号大的日志更加新。如果两份日志最后的条目任期号相同，那么日志比
-	//较长的那个就更加新。
-
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.timer = time.Now()
-	//说明是旧领导者发的心跳，忽略即可  rule1
-	if args.Term < rf.currentTerm {
-		//DPrintf("peer[%d]收到旧领导者peer[%d]在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
-		reply.Term = rf.currentTerm
-		reply.Success = false
-		return
-	}
-	//说明是心跳
-	if len(args.Entries) == 0 {
-		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
-		rf.role = Follower
-		if args.Term >= rf.currentTerm {
-			rf.currentTerm = args.Term
-			rf.role = Follower
-			rf.votedFor = -1
-		}
-		return
-	}
-	// 2B  rule2 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
-	if !rf.Rule2(args.PrevLogIndex, args.PrevLogTerm) {
-		reply.Success = false
-		return
-	}
-	//2B rule3 如果一个已经存在的条目和新条目（即刚刚接收到的条目）发生了冲突（因为索引相同，任期不同），那么就删除这个已经存在的条目以及它之后的所有条目
-	
-
-}
-
-//追加条目 rule2
-func (rf *Raft) Rule2(PrevLogIndex int, PrevLogTerm int) bool {
-	for _, value := range rf.log {
-		if value.LogIndex == PrevLogIndex && value.Term == PrevLogTerm {
-			return true
-		}
-	}
-	return false
-}
-
-//追加条目 rule3
-func (rf *Raft) Rule3()  {
-	
-}
-//比较两个节点的日志哪一个更新,true表示请求方更加新，false表示应答方更加新
-func (rf *Raft) CompareWhichIsNewer(index int, term int) bool {
-	//Raft 通过比较两份日志中最后一条日志条目的索引值和任期号定义谁的日志比较新。如果两份日志最后
-	//的条目的任期号不同，那么任期号大的日志更加新。如果两份日志最后的条目任期号相同，那么日志比
-	//较长的那个就更加新。
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	if len(rf.log) == 0 {
-		return true
-	}
-	if term > rf.log[len(rf.log)-1].Term {
-		return true
-	}else if term == rf.log[len(rf.log)-1].Term {
-		//那么日志比较长的那个就更加新。
-		if index >= rf.log[len(rf.log)-1].LogIndex {
-			return true
-		}else {
-			return false
-		}
-	}else {
-		return false
-	}
-}
-
-
-//
 // example code to send a RequestVote RPC to a server.                     将 RequestVote RPC 发送到服务器的示例代码。
 // server is the index of the target server in rf.peers[].                 server 是 rf.peers[] 中目标服务器的索引。
 // expects RPC arguments in args.                                          期待args中的RPC争论。
@@ -390,6 +276,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	term = rf.currentTerm
 	isLeader = true
+	DPrintf("追加日志Entry{Term: %d, Command: %v, LogIndex: %d}", term, command, index)
 	rf.log = append(rf.log, Entry{Term: term, Command: command, LogIndex: index})
 	return index, term, isLeader
 }
@@ -438,6 +325,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.role = Follower
 	rf.timer = time.Now()
 	rf.votedFor = -1
+
+	rf.applyCh = applyCh
+	rf.applyCond = sync.NewCond(&rf.mu)
+	rf.nextIndex = make([]int, len(rf.peers))
+	rf.matchIndex = make([]int, len(rf.peers))
+
 	DPrintf("peer[%d]初始化成功", rf.me)
 	go rf.run()
 	go rf.AppendEntyiesOrHeartbeat()
@@ -445,201 +338,4 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.readPersist(persister.ReadRaftState())
 
 	return rf
-}
-
-//周期性检查是否超时
-func (rf *Raft) run() {
-	// 如果在随机时间内没有收到其他peer的心跳消息时发送RequestVote RPC 来定期启动领导者选举。
-	for !rf.killed() {
-		time.Sleep(rf.GetRandSleepTime())
-		rf.mu.Lock()
-		if time.Since(rf.timer) >= rf.GetRandElection() && rf.role != Leader{
-			DPrintf("%v", time.Since(rf.timer))
-			//跟随者先要增加自己的当前任期号并且转换到候选人状态。
-			rf.currentTerm++
-			term := rf.currentTerm
-			DPrintf("peer[%d]在term[%d]打算选举成为Leader", rf.me, term)
-			rf.role = Candidate
-			rf.votedFor = rf.me
-			//rf.mu.Unlock()
-			//触发选举,向所有服务器发送 请求选举RPC，首先还要先给自己投一票
-			count := 1
-			finished := 1
-			cond := sync.NewCond(&rf.mu) // 创建一个条件变量
-			//rf.mu.Lock()
-			peers := rf.peers
-			//rf.mu.Unlock()
-			for i, _ := range peers {
-				if i == rf.me {
-					continue
-				}
-				go func(serverId int) {
-					rf.mu.Lock()
-					args := RequestVoteArgs{
-						Term: term,
-						CandidateId: rf.me,
-						LastLogIndex: rf.commitIndex,
-					}
-					if len(rf.log) != 0 {
-						args.LastLogTerm = rf.log[len(rf.log)-1].Term
-					}
-					reply := RequestVoteReply{}
-					rf.mu.Unlock()
-
-					//DPrintf("peer[%d]向peer[%d]发送选举RPC消息", rf.me, serverId)
-					ok := rf.sendRequestVote(serverId, &args, &reply)
-					DPrintf("peer[%d]向peer[%d]在term[%d]发送选举RPC消息后peer[%d]返回的reply为%v:", rf.me, serverId, term, serverId, reply)
-					if !ok {
-						DPrintf("peer[%d]请求peer[%d]不ok", rf.me, serverId)
-						/*rf.timer = time.Now()
-						rf.role = Follower
-						if rf.votedFor == rf.me {
-							rf.votedFor = -1
-						}*/
-					}
-					rf.mu.Lock()
-					if reply.VoteGranted {
-						count++
-						DPrintf("peer[%d] 获得了 peer[%d]的选票", rf.me, serverId)
-					} else if reply.Term > term {
-						if rf.currentTerm < reply.Term {
-							rf.currentTerm = reply.Term
-						}
-						//说明请求的peer的Term比自身大
-						rf.role = Follower
-						rf.votedFor = -1
-						rf.timer = time.Now()
-						rf.mu.Unlock()
-						return
-					}
-					finished++
-					cond.Broadcast()
-					rf.mu.Unlock()
-				}(i)
-			}
-
-			//rf.mu.Lock()
-			for count < len(rf.peers)/2 + 1 && finished != len(rf.peers){
-				cond.Wait()
-			}
-			DPrintf("peer[%d]在term[%d]获得了%d票,一共返回%d个应答", rf.me, term, count, finished)
-			//DPrintf("peer[%d]退出for循环,rf.role=%d,rf.currentTerm=%d,term=%d", rf.me, rf.role, rf.currentTerm, term)
-			//这里是为了防止出现多个leader，假设peer[0]在term[1]  sendRequestVote给peer[1]和peer[2],但是peer[0]由于某些原因并没有来得及处理reply
-			//导致peer[1]再一次选举超时，peer[1]成为候选者在term[2]sendRequestVote给peer[0]和peer[2],此时term以及又+1，导致peer[1]赢得选举，此时peer[0]
-			//又开始处理reply，如果没有这个判断，会导致peer[0]也可以成为领导者。
-			if rf.role != Candidate || rf.currentTerm != term {
-				DPrintf("rf.role=%d,term=%d,rf.currentTerm=%d", rf.role, term, rf.currentTerm)
-				//重新选举
-				rf.role = Follower
-				rf.votedFor = -1
-				rf.timer = time.Now()
-				rf.mu.Unlock()
-				continue
-			}
-			if count >= len(rf.peers)/2+1 {
-				//说明赢得选举,要向其他服务端发送 RPC表明自己成为了Leader
-				rf.role = Leader
-				rf.votedFor = -1
-				DPrintf("peer[%d]成为了term[%d]领导者", rf.me, rf.currentTerm)
-				rf.timer = time.Now()
-				//rf.mu.Unlock()
-				//启动心跳或者追加日志功能
-				//go rf.AppendEntyiesOrHeartbeat()
-			} else {
-				//选举失败,重置选举时间
-				DPrintf("peer[%d] 选举失败", rf.me)
-				rf.timer = time.Now()
-				if rf.votedFor == rf.me {
-					rf.votedFor = -1
-				}
-				rf.role = Follower
-				//rf.mu.Unlock()
-			}
-		}
-		rf.mu.Unlock()
-	}
-}
-
-
-//领导者周期性的发送心跳或者追加条目
-func (rf *Raft) AppendEntyiesOrHeartbeat() {
-	//   2A 目前先不追加条目，只是发送心跳
-	for !rf.killed() {
-		//time.Sleep(100*time.Millisecond)
-		rf.mu.Lock()
-		state := rf.role
-		//rf.mu.Unlock()
-		if state == Leader {
-			//rf.mu.Lock()
-			peers := rf.peers
-			term := rf.currentTerm
-			//rf.mu.Unlock()
-			for i, _ := range peers {
-				//rf.mu.Lock()
-				if rf.role != Leader {
-					//rf.mu.Unlock()
-					break
-				}
-				if i == rf.me {
-					//rf.mu.Unlock()
-					continue
-				}
-				//rf.mu.Unlock()
-				go func(serverId int) {
-					rf.mu.Lock()
-					args := AppendEntries{
-						Term: term,
-						LeaderId: rf.me,
-
-						LeaderCommit: rf.commitIndex,
-					}
-					reply := AppendEntriesReply{}
-					rf.mu.Unlock()
-					ok := rf.sendAppendEntries(serverId, &args, &reply)
-					//处理reply
-					if !ok {
-						return
-					}
-					rf.mu.Lock()
-					rf.timer = time.Now()
-					/*if rf.role != Leader {
-						rf.mu.Unlock()
-						return
-					}*/
-					if !reply.Success {
-						if reply.Term > term {
-							//说明是旧leader发的消息
-							DPrintf("旧领导peer[%d]发送给peer[%d]的消息现在返回", rf.me, serverId)
-							rf.role = Follower
-							if rf.currentTerm < reply.Term {
-								rf.currentTerm = reply.Term
-							}
-							rf.votedFor = -1
-							rf.mu.Unlock()
-							return
-						}
-					}else {
-						//reply.Success==true
-
-					}
-					rf.mu.Unlock()
-				}(i)
-			}
-		}
-		rf.mu.Unlock()
-		time.Sleep(100*time.Millisecond)
-	}
-
-}
-
-//获取随机睡眠时间
-func (rf *Raft) GetRandSleepTime() time.Duration {
-	rand.Seed(time.Now().UnixNano())
-	return time.Duration(rand.Intn(50)+ 20) * time.Millisecond
-}
-
-//获得随机选举超时时间
-func (rf *Raft) GetRandElection() time.Duration {
-	rand.Seed(time.Now().UnixNano())
-	return time.Duration(200+rand.Int31n(150)) * time.Millisecond
 }
