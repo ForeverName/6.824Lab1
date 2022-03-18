@@ -69,6 +69,7 @@ type Entry struct {
 type AppendEntriesReply struct {
 	Term int //当前任期，对于领导者而言，它会更新自己的任期
 	Success bool //如果跟随者所含有的条目和PrevLogIndex以及PrevLogTerm匹配上则返回真
+	ConflictIndex int //冲突索引，这样便于Leader根据返回的值快速定位冲突的位置，更新nextIndex的值
 }
 
 const (
@@ -99,7 +100,7 @@ type Raft struct {
 	currentTerm int //服务器已知最新的任期
 	votedFor int  //投给哪个服务器选票，-1的话就表示还没有投给任何服务器
 	log []Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
-
+				// commitIndex - 1为对应切片的下标，因为log第一个索引为1
 	applyCh chan ApplyMsg
 	applyCond *sync.Cond
 	role int //表明Raft节点的目前身份
@@ -110,8 +111,10 @@ type Raft struct {
 	timer time.Time // 选举计时器
 
 	//领导者上的易失性状态
-	nextIndex []int // 对于每一台服务器，发送到该服务器的下一个日志条目的索引（初始值为领导者最后的日志条目的索引+1）
+	nextIndex []int // 对于每一台服务器，发送到该服务器的下一个日志条目的索引（初始值为领导者最后的日志条目的索引+1）,
+					// nextIndex[i]-1为log切片的下标，nextIndex[i]记录的是对应raft peer的下一条lof的LogIndex数值
 	matchIndex []int // 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
+					//这个用于查看matchIndex[i]的值是否大于N，如果有一半的服务器>N，则说明日志条目索引N已经提交
 
 }
 
@@ -175,9 +178,6 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.yyy = yyy
 	// }
 }
-
-
-
 
 //
 // example RequestVote RPC arguments structure. 示例 RequestVote RPC 参数结构。
@@ -270,6 +270,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return -1, -1, false
 	}
 	if len(rf.log) == 0 {
+		//第一个索引为1
 		index = 1
 	}else {
 		index = rf.log[len(rf.log)-1].LogIndex + 1

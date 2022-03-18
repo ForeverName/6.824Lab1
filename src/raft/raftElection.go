@@ -100,6 +100,8 @@ func (rf *Raft) run() {
 				rf.votedFor = -1
 				DPrintf("peer[%d]成为了term[%d]领导者", rf.me, rf.currentTerm)
 				rf.timer = time.Now()
+				//初始化自身的nextIndex数组
+				rf.InitNextIndexL()
 				//rf.mu.Unlock()
 				//启动心跳或者追加日志功能
 				//go rf.AppendEntyiesOrHeartbeat()

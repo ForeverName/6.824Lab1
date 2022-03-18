@@ -73,6 +73,14 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 
 }
 
+//把日志应用到状态机上,然后返回给前端，也就是往applyCh传递
+func (rf *Raft) AppendLogs() {
+	//首先判断是否有新增的的待提交的日志
+	if rf.lastApplied < rf.commitIndex {
+
+	}
+}
+
 // 处理 心跳或追加日志 的RPC handler
 func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesReply) {
 	//Raft 通过比较两份日志中最后一条日志条目的索引值和任期号定义谁的日志比较新。如果两份日志最后
@@ -100,27 +108,59 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		}
 		return
 	}
-	// 2B  rule2 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
-	if !rf.Rule2(args.PrevLogIndex, args.PrevLogTerm) {
+	// 2B  rule2Andrule3 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
+	//大致意思就是根据prevLogIndex和prevLogTerm看在prevLogIndex索引上的日志Term是否是prevLogTerm，
+	//如果是那么把日志追加在prevLogIndex+1到最后，把raft peer(Follower)的原来冲突日志覆盖即可
+	//如果不是则返回冲突的索引，并且让Leader对应nextIndex的值-1
+	b, conflictIndex := rf.Rule2AndRule3L(args.PrevLogIndex, args.PrevLogTerm)
+	if !b {
 		reply.Success = false
+		reply.ConflictIndex = conflictIndex
 		return
 	}
-	//2B rule3 如果一个已经存在的条目和新条目（即刚刚接收到的条目）发生了冲突（因为索引相同，任期不同），那么就删除这个已经存在的条目以及它之后的所有条目
 
+	//追加新的日志条目
+	rf.log = append(rf.log, args.Entries...)
 
+	//更新接收者raft的commitIndex
+	rf.updateCommitIndexL(args.LeaderCommit)
+	reply.Success = true
 }
 
-//追加条目 rule2
-func (rf *Raft) Rule2(PrevLogIndex int, PrevLogTerm int) bool {
-	for _, value := range rf.log {
+//追加条目 rule2 和 rule3
+func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
+	/*for _, value := range rf.log {
 		if value.LogIndex == PrevLogIndex && value.Term == PrevLogTerm {
 			return true
 		}
+	}*/
+	//PrevLogIndex-1才是PrevLogIndex对应日志的下标
+	//还要考虑接收者没有那么多的日志的一种情况,比如下面的S3为Leader，下一个term为6，
+	//一开始prevLogIndex=12 prevLogTerm=4  nextIndex[1]=13 nextIndex[2]=13
+	//S2的索引12处的日志不匹配，所以针对S2，prevLogIndex=11 prevLogTerm=3 nextIndex[2]=12，继续发送RPC
+	//针对S1，日志没有那么长，所以prevLogIndex=10 prevLogTerm=3 nextIndex[2]=11
+	/*	10    11    12    13
+	S1  3
+	S2  3     3     4
+	S3	3     3     5     6*/
+	conflictIndex := -1
+	if rf.log[len(rf.log)-1].LogIndex < PrevLogIndex {
+		conflictIndex = rf.log[len(rf.log)-1].LogIndex + 1 //11
+		return false, conflictIndex
 	}
-	return false
+	if rf.log[PrevLogIndex-1].Term == PrevLogTerm {
+		return true, conflictIndex
+	}
+	conflictIndex = PrevLogIndex
+	return false, conflictIndex//12
 }
 
-//追加条目 rule3
-func (rf *Raft) Rule3() {
-
+func (rf *Raft) updateCommitIndexL(leaderCommitIndex int) {
+	if leaderCommitIndex > rf.commitIndex {
+		if leaderCommitIndex > rf.log[len(rf.log) - 1].LogIndex {
+			rf.commitIndex = rf.log[len(rf.log) - 1].LogIndex
+		}else {
+			rf.commitIndex = leaderCommitIndex
+		}
+	}
 }

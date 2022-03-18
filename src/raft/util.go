@@ -27,3 +27,14 @@ func (rf *Raft) GetRandElection() time.Duration {
 	rand.Seed(time.Now().UnixNano())
 	return time.Duration(200+rand.Int31n(150)) * time.Millisecond
 }
+
+//初始化nextIndex数组
+func (rf *Raft) InitNextIndexL() {
+	for i, _ := range rf.nextIndex {
+		if len(rf.log) == 0 {
+			rf.nextIndex[i] = 1
+		}else {
+			rf.nextIndex[i] = rf.log[len(rf.log) - 1].LogIndex + 1
+		}
+	}
+}
