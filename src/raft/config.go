@@ -177,6 +177,7 @@ func (cfg *config) start1(i int) {
 				for j := 0; j < len(cfg.logs); j++ {
 					if old, oldok := cfg.logs[j][m.CommandIndex]; oldok && old != v {
 						// some server has already committed a different value for this entry!
+						// 一些服务器已经为此条目提交了不同的值！
 						err_msg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
 							m.CommandIndex, i, m.Command, j, old)
 					}
@@ -373,6 +374,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
+		DPrintf("config.nCommitted输出:peer[%d]是否含有日志%d %v", i, index, ok)
 		cfg.mu.Unlock()
 
 		if ok {
@@ -384,6 +386,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 			cmd = cmd1
 		}
 	}
+	DPrintf("config.nCommited输出:有%d个服务器接收了日志", count)
 	return count, cmd
 }
 
@@ -427,7 +430,7 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 // as do the threads that read from applyCh.
 // returns index.
 // if retry==true, may submit the command multiple
-// times, in case a leader fails just after Start().
+// times, in case a leader fails just after Start().	如果 retry==true，可能会多次提交命令，以防领导者在 Start() 之后失败。
 // if retry==false, calls Start() only once, in order
 // to simplify the early Lab 2B tests.
 func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
@@ -452,7 +455,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				}
 			}
 		}
-
+		DPrintf("config.one()输出:提交的日志索引为index:%d", index)
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.

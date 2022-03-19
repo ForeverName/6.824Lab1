@@ -168,10 +168,8 @@ func (rf *Raft) CompareWhichIsNewerL(index int, term int) bool {
 	//rf.mu.Lock()
 	//defer rf.mu.Unlock() 进入到这个函数之前已经获取锁，所以这里不用再加锁了，否则会造成死锁
 	if len(rf.log) == 0 {
-		DPrintf("执行到这了")
 		return true
 	}
-	DPrintf("执行到这了....")
 	if term > rf.log[len(rf.log)-1].Term {
 		return true
 	}else if term == rf.log[len(rf.log)-1].Term {

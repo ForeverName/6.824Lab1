@@ -184,15 +184,18 @@ func TestFailNoAgree2B(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
-
+	//如果太多关注者断开连接，则无法达成协议
 	cfg.begin("Test (2B): no agreement if too many followers disconnect")
 
 	cfg.one(10, servers, false)
 
-	// 3 of 5 followers disconnect
+	// 3 of 5 followers disconnect 5个中3个断开连接
 	leader := cfg.checkOneLeader()
+	DPrintf("peer[%d]断开连接", (leader + 1) % servers)
 	cfg.disconnect((leader + 1) % servers)
+	DPrintf("peer[%d]断开连接", (leader + 2) % servers)
 	cfg.disconnect((leader + 2) % servers)
+	DPrintf("peer[%d]断开连接", (leader + 3) % servers)
 	cfg.disconnect((leader + 3) % servers)
 
 	index, _, ok := cfg.rafts[leader].Start(20)
@@ -211,12 +214,15 @@ func TestFailNoAgree2B(t *testing.T) {
 	}
 
 	// repair
+	DPrintf("peer[%d]重新连接", (leader + 1) % servers)
 	cfg.connect((leader + 1) % servers)
+	DPrintf("peer[%d]重新连接", (leader + 2) % servers)
 	cfg.connect((leader + 2) % servers)
+	DPrintf("peer[%d]重新连接", (leader + 3) % servers)
 	cfg.connect((leader + 3) % servers)
 
 	// the disconnected majority may have chosen a leader from
-	// among their own ranks, forgetting index 2.
+	// among their own ranks, forgetting index 2. 脱节的大多数人可能从他们自己的队伍中选择了一位领导者，忘记了指数 2。
 	leader2 := cfg.checkOneLeader()
 	index2, _, ok2 := cfg.rafts[leader2].Start(30)
 	if ok2 == false {

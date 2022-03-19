@@ -2,7 +2,7 @@ package raft
 
 import "time"
 
-//领导者周期性的发送心跳或者追加条目
+//领导者周期性的发送心跳
 func (rf *Raft) AppendEntyiesOrHeartbeat() {
 	//   2A 目前先不追加条目，只是发送心跳
 	for !rf.killed() {
@@ -74,10 +74,23 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 }
 
 //把日志应用到状态机上,然后返回给前端，也就是往applyCh传递
-func (rf *Raft) AppendLogs() {
+func (rf *Raft) AppendLogsL() {
 	//首先判断是否有新增的的待提交的日志
 	if rf.lastApplied < rf.commitIndex {
+		Messages := make([]ApplyMsg,0)
 
+		for rf.lastApplied < rf.commitIndex {
+			rf.lastApplied +=1
+			Messages = append(Messages,ApplyMsg{
+				CommandValid: true,
+				CommandIndex: rf.lastApplied,
+				Command: rf.log[rf.lastApplied - 1].Command,
+			})
+			DPrintf("日志索引%d被应用到状态机peer[%d]上", rf.lastApplied, rf.me)
+		}
+		for _,messages := range Messages{
+			rf.applyCh<-messages
+		}
 	}
 }
 
@@ -101,6 +114,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 	if len(args.Entries) == 0 {
 		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
 		rf.role = Follower
+		rf.updateCommitIndexL(args.LeaderCommit)
 		if args.Term >= rf.currentTerm {
 			rf.currentTerm = args.Term
 			rf.role = Follower
@@ -108,6 +122,15 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		}
 		return
 	}
+	//说明是第一条日志，直接添加返回true
+	if args.PrevLogIndex == 0 {
+		DPrintf("peer[%d]接收到第一条日志", rf.me)
+		rf.log = append(rf.log, args.Entries...)
+		rf.updateCommitIndexL(args.LeaderCommit)
+		reply.Success = true
+		return
+	}
+
 	// 2B  rule2Andrule3 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
 	//大致意思就是根据prevLogIndex和prevLogTerm看在prevLogIndex索引上的日志Term是否是prevLogTerm，
 	//如果是那么把日志追加在prevLogIndex+1到最后，把raft peer(Follower)的原来冲突日志覆盖即可
@@ -121,19 +144,14 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 
 	//追加新的日志条目
 	rf.log = append(rf.log, args.Entries...)
-
 	//更新接收者raft的commitIndex
 	rf.updateCommitIndexL(args.LeaderCommit)
 	reply.Success = true
+
 }
 
 //追加条目 rule2 和 rule3
 func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
-	/*for _, value := range rf.log {
-		if value.LogIndex == PrevLogIndex && value.Term == PrevLogTerm {
-			return true
-		}
-	}*/
 	//PrevLogIndex-1才是PrevLogIndex对应日志的下标
 	//还要考虑接收者没有那么多的日志的一种情况,比如下面的S3为Leader，下一个term为6，
 	//一开始prevLogIndex=12 prevLogTerm=4  nextIndex[1]=13 nextIndex[2]=13
@@ -162,5 +180,81 @@ func (rf *Raft) updateCommitIndexL(leaderCommitIndex int) {
 		}else {
 			rf.commitIndex = leaderCommitIndex
 		}
+		//更新rf.commitIndex之后要更新rf.lastApplied
+		rf.AppendLogsL()
+		DPrintf("peer[%d]更新commitIndex=%d", rf.me, rf.commitIndex)
+	}
+}
+
+//发送真正日志的逻辑
+func (rf *Raft) AppendEntries(serverId int) {
+		rf.mu.Lock()
+		term := rf.currentTerm
+		prevLogIndex := 0
+		prevLogTerm := 0
+		if len(rf.log) != 0 {
+			prevLogIndex = rf.nextIndex[serverId] - 1
+			if prevLogIndex != 0 {
+				prevLogTerm = rf.log[prevLogIndex - 1].Term
+			}
+		}
+		beginIndex := rf.nextIndex[serverId] - 1
+		endIndex := len(rf.log)
+		DPrintf("beginIndex=%d,endIndex=%d", beginIndex, endIndex)
+		entry := make([]Entry,endIndex - beginIndex)
+		copy(entry, rf.log[beginIndex:endIndex])
+		DPrintf("发送entry消息:%v", entry)
+		args := AppendEntries{
+			Term: term,
+			LeaderId: rf.me,
+			PrevLogIndex: prevLogIndex,
+			PrevLogTerm: prevLogTerm,
+			Entries: entry,
+			LeaderCommit: rf.commitIndex,
+		}
+		reply := AppendEntriesReply{}
+		rf.mu.Unlock()
+		ok := rf.sendAppendEntries(serverId, &args, &reply)
+		//处理reply
+		if !ok {
+			return
+		}
+		rf.mu.Lock()
+		rf.timer = time.Now()
+		/*if rf.role != Leader {
+			rf.mu.Unlock()
+			return
+		}*/
+		if !reply.Success {
+			if reply.ConflictIndex != -1 {
+				conflictIndex := reply.ConflictIndex
+				rf.nextIndex[serverId] = conflictIndex
+			}
+				rf.mu.Unlock()
+				return
+		}else {
+			//reply.Success==true,更新matchIndex数组和nextIndex数组
+			rf.nextIndex[serverId] = endIndex + 1
+			rf.matchIndex[serverId] = endIndex
+			rf.CheckMatchIndexL(endIndex)
+		}
+		rf.mu.Unlock()
+}
+
+//检查matchIndex数组
+func (rf *Raft) CheckMatchIndexL(index int) {
+	if rf.commitIndex >= index {
+		return
+	}
+	count := 1
+	for _, matchVal := range rf.matchIndex {
+		if matchVal >= index {
+			count++
+		}
+	}
+	if count >= len(rf.peers)/2+1 {
+		DPrintf("Leader=peer[%d]更新commitIndex为%d", rf.me, index)
+		rf.commitIndex = index
+		rf.AppendLogsL()
 	}
 }
