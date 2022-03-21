@@ -1,0 +1,17 @@
+package raft
+
+import "fmt"
+
+//这个类主要为了重写每个结构的string方法，便于输出日志
+func (a AppendEntries) String() string {
+	return fmt.Sprintf("AppendEntries{Term:%d, LeaderId:%d, PrevLogIndex:%d, PrevLogTerm:%d," +
+	" Entries:%v, LeaderCommit:%d}", a.Term, a.LeaderId, a.PrevLogIndex, a.PrevLogTerm, a.Entries, a.LeaderCommit)
+}
+
+func (e Entry) String() string {
+	return fmt.Sprintf("Entry{Term:%d, Command:%v, LogIndex:%d}", e.Term, e.Command, e.LogIndex)
+}
+
+func (a AppendEntriesReply) String() string {
+	return fmt.Sprintf("AppendEntriesReply{Term:%d, Success:%t, ConflictIndex:%d}", a.Term, a.Success, a.ConflictIndex)
+}

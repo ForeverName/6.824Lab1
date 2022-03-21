@@ -125,10 +125,10 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
-	DPrintf("peer[%d]执行到GetState还没进入到lock", rf.me)
+	//DPrintf("peer[%d]执行到GetState还没进入到lock", rf.me)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	DPrintf("peer[%d]执行到GetState进入到lock", rf.me)
+	//DPrintf("peer[%d]执行到GetState进入到lock", rf.me)
 	term = rf.currentTerm
 
 	if rf.role == Leader {

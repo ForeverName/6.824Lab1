@@ -102,6 +102,7 @@ func (rf *Raft) run() {
 				rf.timer = time.Now()
 				//初始化自身的nextIndex数组
 				rf.InitNextIndexL()
+				DPrintf("peer[%d]的nextIndex数组初始化为%v", rf.me, rf.nextIndex)
 				//rf.mu.Unlock()
 				//启动心跳或者追加日志功能
 				//go rf.AppendEntyiesOrHeartbeat()
