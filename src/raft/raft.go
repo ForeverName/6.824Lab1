@@ -265,6 +265,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		rf.role = Follower
 		rf.votedFor = -1
 	}
+	reply.Success = true
 	/*if len(args.Entries) == 0 {
 		if args.Term >= rf.currentTerm {
 			rf.currentTerm = args.Term
