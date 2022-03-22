@@ -279,13 +279,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader = true
 	DPrintf("追加日志Entry{Term: %d, Command: %v, LogIndex: %d}", term, command, index)
 	rf.log = append(rf.log, Entry{Term: term, Command: command, LogIndex: index})
-	//给所有follower发送日志
-	for i, _ := range rf.peers {
-		if i == rf.me {
-			continue
-		}
-		go rf.AppendEntries(i)
-	}
+	DPrintf("peer[%d]追加完成后的日志条目为%v", rf.me, rf.log)
 	return index, term, isLeader
 }
 

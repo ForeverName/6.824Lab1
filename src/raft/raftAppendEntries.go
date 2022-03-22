@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-//领导者周期性的发送心跳
+//领导者周期性的发送心跳或者日志
 func (rf *Raft) AppendEntyiesOrHeartbeat() {
 	//   2A 目前先不追加条目，只是发送心跳
 	for !rf.killed() {
@@ -30,10 +30,34 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 				//rf.mu.Unlock()
 				go func(serverId int) {
 					rf.mu.Lock()
-					args := AppendEntries{
+					/*args := AppendEntries{
 						Term: term,
 						LeaderId: rf.me,
 
+						LeaderCommit: rf.commitIndex,
+					}
+					reply := AppendEntriesReply{}
+					rf.mu.Unlock()*/
+					prevLogIndex := 0
+					prevLogTerm := 0
+					if len(rf.log) != 0 {
+						prevLogIndex = rf.nextIndex[serverId] - 1
+						if prevLogIndex != 0 {
+							prevLogTerm = rf.log[prevLogIndex - 1].Term
+						}
+					}
+					beginIndex := rf.nextIndex[serverId] - 1
+					endIndex := len(rf.log)
+					DPrintf("beginIndex=%d,endIndex=%d", beginIndex, endIndex)
+					entry := make([]Entry,endIndex - beginIndex)
+					copy(entry, rf.log[beginIndex:endIndex])
+					DPrintf("peer[%d]给peer[%d]发送消息:%v", rf.me, serverId, entry)
+					args := AppendEntries{
+						Term: term,
+						LeaderId: rf.me,
+						PrevLogIndex: prevLogIndex,
+						PrevLogTerm: prevLogTerm,
+						Entries: entry,
 						LeaderCommit: rf.commitIndex,
 					}
 					reply := AppendEntriesReply{}
@@ -49,6 +73,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 						rf.mu.Unlock()
 						return
 					}*/
+					DPrintf("peer[%d]发送peer[%d]的日志后返回结果为为%v",rf.me, serverId, reply)
 					if !reply.Success {
 						if reply.Term > term {
 							//说明是旧leader发的消息
@@ -61,16 +86,28 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							rf.mu.Unlock()
 							return
 						}
+						if reply.ConflictIndex != -1 {
+							conflictIndex := reply.ConflictIndex
+							rf.nextIndex[serverId] = conflictIndex
+							DPrintf("更新peer[%d]的nextIndex[%d]=%d", rf.me, serverId, conflictIndex)
+							rf.mu.Unlock()
+							return
+						}
+						rf.mu.Unlock()
+						return
 					}else {
 						//reply.Success==true
-
+						rf.nextIndex[serverId] = endIndex + 1
+						rf.matchIndex[serverId] = endIndex
+						DPrintf("更新peer[%d]的nextIndex[%d]=%d,matchIndex[%d]=%d", rf.me, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
+						rf.CheckMatchIndexL(endIndex)
 					}
 					rf.mu.Unlock()
 				}(i)
 			}
 		}
 		rf.mu.Unlock()
-		time.Sleep(100*time.Millisecond)
+		time.Sleep(50*time.Millisecond)
 	}
 
 }
@@ -114,7 +151,21 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		reply.Success = false
 		return
 	}
-	//说明是心跳
+
+	// 2B  rule2Andrule3 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
+	//大致意思就是根据prevLogIndex和prevLogTerm看在prevLogIndex索引上的日志Term是否是prevLogTerm，
+	//如果是那么把日志追加在prevLogIndex+1到最后，把raft peer(Follower)的原来冲突日志覆盖即可
+	//如果不是则返回冲突的索引，并且让Leader对应nextIndex的值为ConflictIndex
+	b, conflictIndex := rf.Rule2AndRule3L(args.PrevLogIndex, args.PrevLogTerm)
+	if !b {
+		reply.Success = false
+		reply.ConflictIndex = conflictIndex
+		return
+	}
+
+	//说明是心跳,心跳也需要检查规则rf.Rule2AndRule3L(),以免一个旧领导者(现在是follower,日志条目比新领导者多，但是很多没有commit)
+	//接收到新领导的心跳导致rf.log[len(rf.log)-1].LogIndex > PrevLogIndex,但是rf.log[PrevLogIndex-1].Term != PrevLogTerm
+	//而把rf.commitIndex更新，实际上旧领导者还没有接收到新领导的日志，会导致旧领导者的旧日志被提交而引发日志不一致的错误.
 	if len(args.Entries) == 0 {
 		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
 		rf.role = Follower
@@ -125,25 +176,6 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 			rf.votedFor = -1
 		}
 		reply.Success = true
-		return
-	}
-	//说明是第一条日志，直接添加返回true
-	if args.PrevLogIndex == 0 {
-		DPrintf("peer[%d]接收到第一条日志", rf.me)
-		rf.log = append(rf.log, args.Entries...)
-		rf.updateCommitIndexL(args.LeaderCommit)
-		reply.Success = true
-		return
-	}
-
-	// 2B  rule2Andrule3 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
-	//大致意思就是根据prevLogIndex和prevLogTerm看在prevLogIndex索引上的日志Term是否是prevLogTerm，
-	//如果是那么把日志追加在prevLogIndex+1到最后，把raft peer(Follower)的原来冲突日志覆盖即可
-	//如果不是则返回冲突的索引，并且让Leader对应nextIndex的值-1
-	b, conflictIndex := rf.Rule2AndRule3L(args.PrevLogIndex, args.PrevLogTerm)
-	if !b {
-		reply.Success = false
-		reply.ConflictIndex = conflictIndex
 		return
 	}
 
@@ -170,9 +202,13 @@ func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
 	S2  3     3     4
 	S3	3     3     5     6*/
 	DPrintf("peer[%d]的log为%v", rf.me, rf.log)
+	conflictIndex := -1
+	//说明是第一条日志
+	if PrevLogIndex == 0 {
+		return true, conflictIndex
+	}
 	DPrintf("peer[%d]:rf.log[len(rf.log)-1].LogIndex=%d,PrevLogIndex=%d",
 		rf.me, rf.log[len(rf.log)-1].LogIndex, PrevLogIndex)
-	conflictIndex := -1
 	if rf.log[len(rf.log)-1].LogIndex < PrevLogIndex {
 		conflictIndex = rf.log[len(rf.log)-1].LogIndex + 1 //11,对应S1
 		return false, conflictIndex
@@ -201,68 +237,6 @@ func (rf *Raft) updateCommitIndexL(leaderCommitIndex int) {
 		//更新rf.commitIndex之后要更新rf.lastApplied
 		rf.AppendLogsL()
 	}
-}
-
-//发送真正日志的逻辑
-func (rf *Raft) AppendEntries(serverId int) {
-		rf.mu.Lock()
-		term := rf.currentTerm
-		prevLogIndex := 0
-		prevLogTerm := 0
-		if len(rf.log) != 0 {
-			prevLogIndex = rf.nextIndex[serverId] - 1
-			if prevLogIndex != 0 {
-				prevLogTerm = rf.log[prevLogIndex - 1].Term
-			}
-		}
-		beginIndex := rf.nextIndex[serverId] - 1
-		endIndex := len(rf.log)
-		DPrintf("beginIndex=%d,endIndex=%d", beginIndex, endIndex)
-		entry := make([]Entry,endIndex - beginIndex)
-		copy(entry, rf.log[beginIndex:endIndex])
-		DPrintf("peer[%d]给peer[%d]发送消息:%v", rf.me, serverId, entry)
-		args := AppendEntries{
-			Term: term,
-			LeaderId: rf.me,
-			PrevLogIndex: prevLogIndex,
-			PrevLogTerm: prevLogTerm,
-			Entries: entry,
-			LeaderCommit: rf.commitIndex,
-		}
-		reply := AppendEntriesReply{}
-		rf.mu.Unlock()
-		ok := rf.sendAppendEntries(serverId, &args, &reply)
-		//处理reply
-		if !ok {
-			return
-		}
-		rf.mu.Lock()
-		rf.timer = time.Now()
-		/*if rf.role != Leader {
-			rf.mu.Unlock()
-			return
-		}*/
-		DPrintf("peer[%d]发送peer[%d]的日志后返回结果为为%v",rf.me, serverId, reply)
-		if !reply.Success {
-			if reply.ConflictIndex != -1 {
-				conflictIndex := reply.ConflictIndex
-				rf.nextIndex[serverId] = conflictIndex
-				DPrintf("更新peer[%d]的nextIndex[%d]=%d", rf.me, serverId, conflictIndex)
-				rf.mu.Unlock()
-				//失败重新发送
-				rf.AppendEntries(serverId)
-				return
-			}
-			rf.mu.Unlock()
-			return
-		}else {
-			//reply.Success==true,更新matchIndex数组和nextIndex数组
-			rf.nextIndex[serverId] = endIndex + 1
-			rf.matchIndex[serverId] = endIndex
-			DPrintf("更新peer[%d]的nextIndex[%d]=%d,matchIndex[%d]=%d", rf.me, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
-			rf.CheckMatchIndexL(endIndex)
-		}
-		rf.mu.Unlock()
 }
 
 //检查matchIndex数组

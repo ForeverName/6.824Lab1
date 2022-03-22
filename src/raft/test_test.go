@@ -237,7 +237,7 @@ func TestFailNoAgree2B(t *testing.T) {
 	cfg.end()
 }
 
-/*func TestConcurrentStarts2B(t *testing.T) {
+func TestConcurrentStarts2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -342,33 +342,39 @@ func TestRejoin2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
-
+	//分区领导者的重新加入
 	cfg.begin("Test (2B): rejoin of partitioned leader")
 
 	cfg.one(101, servers, true)
 
 	// leader network failure
 	leader1 := cfg.checkOneLeader()
+	DPrintf("leader1=peer[%d]断开连接", leader1)
 	cfg.disconnect(leader1)
 
-	// make old leader try to agree on some entries
+	// make old leader try to agree on some entries 让老领导尝试就某些条目达成一致
+	DPrintf("让老领导peer[%d]尝试就某些条目达成一致", leader1)
 	cfg.rafts[leader1].Start(102)
 	cfg.rafts[leader1].Start(103)
 	cfg.rafts[leader1].Start(104)
 
-	// new leader commits, also for index=2
+	// new leader commits, also for index=2 新的领导者提交，也为 index=2
+	DPrintf("新的领导者提交，也为 index=2")
 	cfg.one(103, 2, true)
 
-	// new leader network failure
+	// new leader network failure 新领导者网络故障
 	leader2 := cfg.checkOneLeader()
+	DPrintf("新领导者peer[%d]网络故障", leader2)
 	cfg.disconnect(leader2)
 
-	// old leader connected again
+	// old leader connected again 老领导又连上了
+	DPrintf("老领导peer[%d]又连上了", leader1)
 	cfg.connect(leader1)
 
 	cfg.one(104, 2, true)
 
 	// all together now
+	DPrintf("新老领导者都连接上了")
 	cfg.connect(leader2)
 
 	cfg.one(105, servers, true)
@@ -556,7 +562,7 @@ loop:
 	}
 
 	cfg.end()
-}*/
+}
 
 func TestPersist12C(t *testing.T) {
 	servers := 3
