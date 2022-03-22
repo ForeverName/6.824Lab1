@@ -501,7 +501,6 @@ func (rf *Raft) run() {
 			if count >= len(rf.peers)/2+1 {
 				//说明赢得选举,要向其他服务端发送 RPC表明自己成为了Leader
 				rf.role = Leader
-				rf.votedFor = -1
 				DPrintf("peer[%d]成为了term[%d]领导者", rf.me, rf.currentTerm)
 				rf.timer = time.Now()
 				//rf.mu.Unlock()
