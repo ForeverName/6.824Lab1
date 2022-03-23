@@ -440,9 +440,9 @@ func (rf *Raft) run() {
 					args := RequestVoteArgs{
 						Term: term,
 						CandidateId: rf.me,
-						LastLogIndex: rf.commitIndex,
 					}
 					if len(rf.log) != 0 {
+						args.LastLogIndex = rf.log[len(rf.log) - 1].LogIndex
 						args.LastLogTerm = rf.log[len(rf.log)-1].Term
 					}
 					reply := RequestVoteReply{}
