@@ -83,6 +83,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 								rf.currentTerm = reply.Term
 							}
 							rf.votedFor = -1
+							rf.persist()
 							rf.mu.Unlock()
 							return
 						}
@@ -174,6 +175,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 			rf.currentTerm = args.Term
 			rf.role = Follower
 			rf.votedFor = -1
+			rf.persist()
 		}
 		reply.Success = true
 		return
@@ -183,6 +185,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 	DPrintf("peer[%d]原来的日志条目为%v,追加的日志条目为%v", rf.me, rf.log, args.Entries)
 	//去除重复的才能添加到日志里面
 	rf.log = append(rf.log[:args.PrevLogIndex], args.Entries...)
+	rf.persist()
 	DPrintf("peer[%d]追加完成后的日志条目为%v", rf.me, rf.log)
 	//更新接收者raft的commitIndex
 	rf.updateCommitIndexL(args.LeaderCommit)

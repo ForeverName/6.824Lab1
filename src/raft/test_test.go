@@ -14,7 +14,6 @@ import (
 )
 import "time"
 import "math/rand"
-import "sync/atomic"
 import "sync"
 
 // The tester generously allows solutions to complete elections in one second
@@ -564,7 +563,7 @@ loop:
 	cfg.end()
 }
 
-func TestPersist12C(t *testing.T) {
+/*func TestPersist12C(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -578,23 +577,29 @@ func TestPersist12C(t *testing.T) {
 		cfg.start1(i)
 	}
 	for i := 0; i < servers; i++ {
+		DPrintf("perr[%d]断开连接", i)
 		cfg.disconnect(i)
+		DPrintf("peer[%d]重新连接", i)
 		cfg.connect(i)
 	}
 
 	cfg.one(12, servers, true)
 
 	leader1 := cfg.checkOneLeader()
+	DPrintf("leader=peer[%d]断开连接", leader1)
 	cfg.disconnect(leader1)
 	cfg.start1(leader1)
+	DPrintf("peer[%d]重新连接", leader1)
 	cfg.connect(leader1)
 
 	cfg.one(13, servers, true)
 
 	leader2 := cfg.checkOneLeader()
+	DPrintf("leader=peer[%d]断开连接", leader2)
 	cfg.disconnect(leader2)
 	cfg.one(14, servers-1, true)
 	cfg.start1(leader2)
+	DPrintf("peer[%d]重新连接", leader2)
 	cfg.connect(leader2)
 
 	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
@@ -608,7 +613,7 @@ func TestPersist12C(t *testing.T) {
 	cfg.one(16, servers, true)
 
 	cfg.end()
-}
+}*/
 
 func TestPersist22C(t *testing.T) {
 	servers := 5
@@ -619,44 +624,44 @@ func TestPersist22C(t *testing.T) {
 
 	index := 1
 	for iters := 0; iters < 5; iters++ {
-		cfg.one(10+index, servers, true)
+		cfg.one(10+index, servers, true) //11 14 17 20 23
 		index++
 
 		leader1 := cfg.checkOneLeader()
-
+		DPrintf("peer[%d]和peer[%d]disconnect断开连接", (leader1 + 1) % servers, (leader1 + 2) % servers)
 		cfg.disconnect((leader1 + 1) % servers)
 		cfg.disconnect((leader1 + 2) % servers)
 
-		cfg.one(10+index, servers-2, true)
+		cfg.one(10+index, servers-2, true) //12 15 18 21 24
 		index++
-
+		DPrintf("peer[%d],peer[%d]和peer[%d]disconnect断开连接", (leader1 + 0) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers)
 		cfg.disconnect((leader1 + 0) % servers)
 		cfg.disconnect((leader1 + 3) % servers)
 		cfg.disconnect((leader1 + 4) % servers)
-
+		DPrintf("peer[%d]和peer[%d]reconnect重新连接", (leader1 + 1) % servers, (leader1 + 2) % servers)
 		cfg.start1((leader1 + 1) % servers)
 		cfg.start1((leader1 + 2) % servers)
 		cfg.connect((leader1 + 1) % servers)
 		cfg.connect((leader1 + 2) % servers)
 
 		time.Sleep(RaftElectionTimeout)
-
+		DPrintf("peer[%d]reconnect重新连接", (leader1 + 3) % servers)
 		cfg.start1((leader1 + 3) % servers)
 		cfg.connect((leader1 + 3) % servers)
 
-		cfg.one(10+index, servers-2, true)
+		cfg.one(10+index, servers-2, true) //13 16 19 22 25
 		index++
-
+		DPrintf("peer[%d]和peer[%d]reconnect重新连接", (leader1 + 4) % servers, (leader1 + 0) % servers)
 		cfg.connect((leader1 + 4) % servers)
 		cfg.connect((leader1 + 0) % servers)
 	}
 
-	cfg.one(1000, servers, true)
+	cfg.one(1000, servers, true) //1000
 
 	cfg.end()
 }
 
-func TestPersist32C(t *testing.T) {
+/*func TestPersist32C(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -684,7 +689,7 @@ func TestPersist32C(t *testing.T) {
 	cfg.one(104, servers, true)
 
 	cfg.end()
-}
+}*/
 
 //
 // Test the scenarios described in Figure 8 of the extended Raft paper. Each
@@ -696,7 +701,7 @@ func TestPersist32C(t *testing.T) {
 // The leader in a new term may try to finish replicating log entries that
 // haven't been committed yet.
 //
-func TestFigure82C(t *testing.T) {
+/*func TestFigure82C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -834,9 +839,9 @@ func TestFigure8Unreliable2C(t *testing.T) {
 	cfg.one(rand.Int()%10000, servers, true)
 
 	cfg.end()
-}
+}*/
 
-func internalChurn(t *testing.T, unreliable bool) {
+/*func internalChurn(t *testing.T, unreliable bool) {
 
 	servers := 5
 	cfg := make_config(t, servers, unreliable)
@@ -987,4 +992,4 @@ func TestReliableChurn2C(t *testing.T) {
 
 func TestUnreliableChurn2C(t *testing.T) {
 	internalChurn(t, true)
-}
+}*/

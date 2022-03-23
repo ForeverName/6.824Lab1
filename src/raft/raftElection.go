@@ -19,7 +19,7 @@ func (rf *Raft) run() {
 			DPrintf("peer[%d]在term[%d]打算选举成为Leader", rf.me, term)
 			rf.role = Candidate
 			rf.votedFor = rf.me
-			//rf.mu.Unlock()
+			rf.persist()
 			//触发选举,向所有服务器发送 请求选举RPC，首先还要先给自己投一票
 			count := 1
 			finished := 1
@@ -36,9 +36,9 @@ func (rf *Raft) run() {
 					args := RequestVoteArgs{
 						Term: term,
 						CandidateId: rf.me,
-						LastLogIndex: rf.commitIndex,
 					}
 					if len(rf.log) != 0 {
+						args.LastLogIndex = rf.log[len(rf.log) - 1].LogIndex
 						args.LastLogTerm = rf.log[len(rf.log)-1].Term
 					}
 					reply := RequestVoteReply{}
@@ -66,6 +66,7 @@ func (rf *Raft) run() {
 						//说明请求的peer的Term比自身大
 						rf.role = Follower
 						rf.votedFor = -1
+						rf.persist()
 						rf.timer = time.Now()
 						rf.mu.Unlock()
 						return
@@ -90,6 +91,7 @@ func (rf *Raft) run() {
 				//重新选举
 				rf.role = Follower
 				rf.votedFor = -1
+				rf.persist()
 				rf.timer = time.Now()
 				rf.mu.Unlock()
 				continue
@@ -111,6 +113,7 @@ func (rf *Raft) run() {
 				rf.timer = time.Now()
 				if rf.votedFor == rf.me {
 					rf.votedFor = -1
+					rf.persist()
 				}
 				rf.role = Follower
 				//rf.mu.Unlock()
@@ -134,7 +137,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
 	// Your code here (2A, 2B).
 	//          2A  接收到其他候选人的选举请求
-	DPrintf("peer[%d]向peer[%d]发送选举RPC消息", args.CandidateId, rf.me)
+	DPrintf("peer[%d]向peer[%d]发送选举RPC消息:%v", args.CandidateId, rf.me, *args)
 	rf.timer = time.Now()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
@@ -146,17 +149,19 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.CompareWhichIsNewerL(args.LastLogIndex, args.LastLogTerm){
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
+			rf.persist()
 		}
 		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
 	} else if args.Term > rf.currentTerm {
 		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Foller
 		rf.currentTerm = args.Term
 		rf.role = Follower
-		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。这里还没有判断哪个最新， 2B
+		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。
 		if rf.CompareWhichIsNewerL(args.LastLogIndex, args.LastLogTerm) {
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
 		}
+		rf.persist()
 	}
 }
 

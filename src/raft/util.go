@@ -19,13 +19,13 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 //获取随机睡眠时间
 func (rf *Raft) GetRandSleepTime() time.Duration {
 	rand.Seed(time.Now().UnixNano())
-	return time.Duration(rand.Intn(50)+ 20) * time.Millisecond
+	return time.Duration(rand.Intn(30)+ 20) * time.Millisecond
 }
 
 //获得随机选举超时时间
 func (rf *Raft) GetRandElection() time.Duration {
 	rand.Seed(time.Now().UnixNano())
-	return time.Duration(200+rand.Int31n(150)) * time.Millisecond
+	return time.Duration(150+rand.Int31n(150)) * time.Millisecond
 }
 
 //初始化nextIndex数组

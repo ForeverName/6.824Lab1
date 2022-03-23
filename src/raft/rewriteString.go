@@ -15,3 +15,6 @@ func (e Entry) String() string {
 func (a AppendEntriesReply) String() string {
 	return fmt.Sprintf("AppendEntriesReply{Term:%d, Success:%t, ConflictIndex:%d}", a.Term, a.Success, a.ConflictIndex)
 }
+func (a RequestVoteArgs) String() string {
+	return fmt.Sprintf("RequestVoteArgs{Term:%d, CandidateId:%d, LastLogIndex:%d, LastLogTerm:%d}", a.Term, a.CandidateId, a.LastLogIndex, a.LastLogTerm)
+}

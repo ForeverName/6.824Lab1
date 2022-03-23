@@ -18,6 +18,8 @@ package raft
 //  每次向日志提交新条目时，每个 Raft peers 都应向同一服务器中的服务（或测试者）发送 ApplyMsg。
 
 import (
+	"../labgob"
+	"bytes"
 	"sync"
 	"time"
 )
@@ -154,6 +156,12 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	rf.persister.SaveRaftState(w.Bytes())
 }
 
 
@@ -177,6 +185,21 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var log []Entry
+
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&votedFor) != nil ||
+		d.Decode(&log) != nil {
+		DPrintf("peer[%d]readPersist error", rf.me)
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = log
+	}
 }
 
 //
@@ -276,9 +299,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		index = rf.log[len(rf.log)-1].LogIndex + 1
 	}
 	term = rf.currentTerm
-	isLeader = true
 	DPrintf("追加日志Entry{Term: %d, Command: %v, LogIndex: %d}", term, command, index)
 	rf.log = append(rf.log, Entry{Term: term, Command: command, LogIndex: index})
+	rf.persist()
 	DPrintf("peer[%d]追加完成后的日志条目为%v", rf.me, rf.log)
 	return index, term, isLeader
 }
@@ -324,6 +347,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	//            2A
+	rf.mu.Lock()
 	rf.role = Follower
 	rf.timer = time.Now()
 	rf.votedFor = -1
@@ -332,12 +356,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyCond = sync.NewCond(&rf.mu)
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
-
-	DPrintf("peer[%d]初始化成功", rf.me)
-	go rf.run()
-	go rf.AppendEntyiesOrHeartbeat()
+	rf.mu.Unlock()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	DPrintf("peer[%d]初始化成功,且currentTerm=%d,votedFor=%d,log=%v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	go rf.run()
+	go rf.AppendEntyiesOrHeartbeat()
 
 	return rf
 }

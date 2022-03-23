@@ -449,6 +449,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			cfg.mu.Unlock()
 			if rf != nil {
 				index1, _, ok := rf.Start(cmd)
+				DPrintf("peer[%d]调用了Start(cmd),返回结果为%t", rf.me, ok)
 				if ok {
 					index = index1
 					break
@@ -478,6 +479,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
+	//10s内没有应用消息就会报错
 	cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	return -1
 }
