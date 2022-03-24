@@ -24,20 +24,10 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 					break
 				}
 				if i == rf.me {
-					//rf.mu.Unlock()
 					continue
 				}
-				//rf.mu.Unlock()
 				go func(serverId int) {
 					rf.mu.Lock()
-					/*args := AppendEntries{
-						Term: term,
-						LeaderId: rf.me,
-
-						LeaderCommit: rf.commitIndex,
-					}
-					reply := AppendEntriesReply{}
-					rf.mu.Unlock()*/
 					prevLogIndex := 0
 					prevLogTerm := 0
 					if len(rf.log) != 0 {
@@ -68,7 +58,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 						return
 					}
 					rf.mu.Lock()
-					rf.timer = time.Now()
+					//rf.timer = time.Now()
 					/*if rf.role != Leader {
 						rf.mu.Unlock()
 						return
@@ -79,6 +69,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							//说明是旧leader发的消息
 							DPrintf("旧领导peer[%d]发送给peer[%d]的消息现在返回", rf.me, serverId)
 							rf.role = Follower
+							rf.setElectionTime()
 							if rf.currentTerm < reply.Term {
 								rf.currentTerm = reply.Term
 							}
@@ -106,6 +97,10 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 					rf.mu.Unlock()
 				}(i)
 			}
+		}
+		if rf.role != Leader {
+			rf.mu.Unlock()
+			break
 		}
 		rf.mu.Unlock()
 		time.Sleep(50*time.Millisecond)
@@ -143,7 +138,6 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	DPrintf("peer[%d]接收到peer[%d]的消息为:%v", rf.me, args.LeaderId, args)
-	rf.timer = time.Now()
 	reply.ConflictIndex = -1
 	//说明是旧领导者发的，忽略即可  rule1
 	if args.Term < rf.currentTerm {
@@ -152,7 +146,9 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		reply.Success = false
 		return
 	}
-
+	//这里不应该把重置时间放在 if args.Term < rf.currentTerm 上面，因为旧领导的心跳不应该重置选举超时时间以推迟我们选举新的领导，否则选举会
+	//频繁超时，导致Lab2C中的第二个测试总是在10s内没有选举新的领导而无法应用新的提交的日志，最终导致测试不通过。
+	rf.setElectionTime()
 	// 2B  rule2Andrule3 在接收者日志中如果能找到一个和prevLogIndex和prevLogTerm一样的索引和任期的日志条目则继续执行下面的步骤，否则返回假
 	//大致意思就是根据prevLogIndex和prevLogTerm看在prevLogIndex索引上的日志Term是否是prevLogTerm，
 	//如果是那么把日志追加在prevLogIndex+1到最后，把raft peer(Follower)的原来冲突日志覆盖即可
@@ -210,6 +206,9 @@ func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
 	if PrevLogIndex == 0 {
 		return true, conflictIndex
 	}
+	if len(rf.log) == 0 {
+		return false, 1
+	}
 	DPrintf("peer[%d]:rf.log[len(rf.log)-1].LogIndex=%d,PrevLogIndex=%d",
 		rf.me, rf.log[len(rf.log)-1].LogIndex, PrevLogIndex)
 	if rf.log[len(rf.log)-1].LogIndex < PrevLogIndex {
@@ -253,7 +252,7 @@ func (rf *Raft) CheckMatchIndexL(index int) {
 			count++
 		}
 	}
-	if count >= len(rf.peers)/2+1 {
+	if count >= len(rf.peers)/2+1 && rf.currentTerm == rf.log[index - 1].Term{
 		DPrintf("Leader=peer[%d]更新commitIndex为%d", rf.me, index)
 		rf.commitIndex = index
 		rf.AppendLogsL()

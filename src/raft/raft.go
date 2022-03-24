@@ -116,7 +116,8 @@ type Raft struct {
 	nextIndex []int // 对于每一台服务器，发送到该服务器的下一个日志条目的索引（初始值为领导者最后的日志条目的索引+1）,
 					// nextIndex[i]-1为log切片的下标，nextIndex[i]记录的是对应raft peer的下一条lof的LogIndex数值
 	matchIndex []int // 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
-					//这个用于查看matchIndex[i]的值是否大于N，如果有一半的服务器>N，则说明日志条目索引N已经提交
+					//这个用于查看matchIndex[i]的值是否大于N，如果有一半的服务器>N，且最后的索引对应的日志的任期是当前Leader的任期
+					//则说明日志条目索引N可以提交
 
 }
 
@@ -349,7 +350,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	//            2A
 	rf.mu.Lock()
 	rf.role = Follower
-	rf.timer = time.Now()
+	rf.setElectionTime()
 	rf.votedFor = -1
 
 	rf.applyCh = applyCh
@@ -360,8 +361,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	DPrintf("peer[%d]初始化成功,且currentTerm=%d,votedFor=%d,log=%v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
-	go rf.run()
-	go rf.AppendEntyiesOrHeartbeat()
+	go rf.ElectionTicker()
+	//go rf.AppendEntyiesOrHeartbeat()
 
 	return rf
 }

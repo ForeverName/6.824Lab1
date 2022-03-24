@@ -449,7 +449,6 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			cfg.mu.Unlock()
 			if rf != nil {
 				index1, _, ok := rf.Start(cmd)
-				DPrintf("peer[%d]调用了Start(cmd),返回结果为%t", rf.me, ok)
 				if ok {
 					index = index1
 					break

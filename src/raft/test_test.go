@@ -9,18 +9,18 @@ package raft
 //
 
 import (
-	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 import "time"
-import "math/rand"
-import "sync"
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
 const RaftElectionTimeout = 1000 * time.Millisecond
 
-func TestInitialElection2A(t *testing.T) {
+/*func TestInitialElection2A(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -49,7 +49,7 @@ func TestInitialElection2A(t *testing.T) {
 	cfg.checkOneLeader()
 
 	cfg.end()
-}
+}*/
 
 func TestReElection2A(t *testing.T) {
 	servers := 3
@@ -59,27 +59,27 @@ func TestReElection2A(t *testing.T) {
 	cfg.begin("Test (2A): election after network failure")
 
 	leader1 := cfg.checkOneLeader()
-	//DPrintf("这里领导者掉线，应该再重新选举一个Leader")
+	DPrintf("这里领导者掉线，应该再重新选举一个Leader")
 	// if the leader disconnects, a new one should be elected.
 	cfg.disconnect(leader1)
 	cfg.checkOneLeader()
-	//DPrintf("旧领导者重新连接，应该不打扰新领导者")
+	DPrintf("旧领导者重新连接，应该不打扰新领导者")
 	// if the old leader rejoins, that shouldn't
 	// disturb the new leader.
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
-	//DPrintf("这里掉线大多数peer，应该无法再选出Leader")
+	DPrintf("这里掉线大多数peer，应该无法再选出Leader")
 	// if there's no quorum, no leader should
 	// be elected.
 	cfg.disconnect(leader2)
 	cfg.disconnect((leader2 + 1) % servers)
 	time.Sleep(2 * RaftElectionTimeout)
 	cfg.checkNoLeader()
-	//DPrintf("如果达到法定人数。应该重新选举Leader")
+	DPrintf("如果达到法定人数。应该重新选举Leader")
 	// if a quorum arises, it should elect a leader.
 	cfg.connect((leader2 + 1) % servers)
 	cfg.checkOneLeader()
-	//DPrintf("最后一个节点的重新加入不应阻止领导者的存在。")
+	DPrintf("最后一个节点的重新加入不应阻止领导者的存在。")
 	// re-join of last node shouldn't prevent leader from existing.
 	cfg.connect(leader2)
 	cfg.checkOneLeader()
@@ -563,7 +563,7 @@ loop:
 	cfg.end()
 }
 
-/*func TestPersist12C(t *testing.T) {
+func TestPersist12C(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -613,7 +613,7 @@ loop:
 	cfg.one(16, servers, true)
 
 	cfg.end()
-}*/
+}
 
 func TestPersist22C(t *testing.T) {
 	servers := 5
@@ -661,7 +661,7 @@ func TestPersist22C(t *testing.T) {
 	cfg.end()
 }
 
-/*func TestPersist32C(t *testing.T) {
+func TestPersist32C(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -689,7 +689,7 @@ func TestPersist22C(t *testing.T) {
 	cfg.one(104, servers, true)
 
 	cfg.end()
-}*/
+}
 
 //
 // Test the scenarios described in Figure 8 of the extended Raft paper. Each
@@ -701,7 +701,7 @@ func TestPersist22C(t *testing.T) {
 // The leader in a new term may try to finish replicating log entries that
 // haven't been committed yet.
 //
-/*func TestFigure82C(t *testing.T) {
+func TestFigure82C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -731,6 +731,7 @@ func TestPersist22C(t *testing.T) {
 		}
 
 		if leader != -1 {
+			DPrintf("leader:peer[%d]disconnect断开连接", leader)
 			cfg.crash1(leader)
 			nup -= 1
 		}
@@ -738,6 +739,7 @@ func TestPersist22C(t *testing.T) {
 		if nup < 3 {
 			s := rand.Int() % servers
 			if cfg.rafts[s] == nil {
+				DPrintf("peer[%d]reconnect重新连接", s)
 				cfg.start1(s)
 				cfg.connect(s)
 				nup += 1
@@ -839,9 +841,9 @@ func TestFigure8Unreliable2C(t *testing.T) {
 	cfg.one(rand.Int()%10000, servers, true)
 
 	cfg.end()
-}*/
+}
 
-/*func internalChurn(t *testing.T, unreliable bool) {
+func internalChurn(t *testing.T, unreliable bool) {
 
 	servers := 5
 	cfg := make_config(t, servers, unreliable)
@@ -992,4 +994,4 @@ func TestReliableChurn2C(t *testing.T) {
 
 func TestUnreliableChurn2C(t *testing.T) {
 	internalChurn(t, true)
-}*/
+}
