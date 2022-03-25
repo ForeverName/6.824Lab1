@@ -72,8 +72,9 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							rf.setElectionTime()
 							if rf.currentTerm < reply.Term {
 								rf.currentTerm = reply.Term
+								rf.votedFor = -1
 							}
-							rf.votedFor = -1
+							//rf.votedFor = -1
 							rf.persist()
 							rf.mu.Unlock()
 							return
@@ -103,7 +104,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 			break
 		}
 		rf.mu.Unlock()
-		time.Sleep(100*time.Millisecond)
+		time.Sleep(50*time.Millisecond)
 	}
 
 }
@@ -167,10 +168,14 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
 		rf.role = Follower
 		rf.updateCommitIndexL(args.LeaderCommit)
-		if args.Term >= rf.currentTerm {
+		if args.Term > rf.currentTerm {
 			rf.currentTerm = args.Term
 			rf.role = Follower
 			rf.votedFor = -1
+			rf.persist()
+		}
+		if args.Term == rf.currentTerm {
+			rf.role = Follower
 			rf.persist()
 		}
 		reply.Success = true

@@ -66,10 +66,11 @@ func (rf *Raft) ElectionL() {
 				} else if reply.Term > term {
 					if rf.currentTerm < reply.Term {
 						rf.currentTerm = reply.Term
+						rf.votedFor = -1
 					}
 					//说明请求的peer的Term比自身大
 					rf.role = Follower
-					rf.votedFor = -1
+					//rf.votedFor = -1
 					rf.persist()
 					finished++
 					cond.Broadcast()
@@ -95,7 +96,7 @@ func (rf *Raft) ElectionL() {
 			DPrintf("rf.role=%d,term=%d,rf.currentTerm=%d", rf.role, term, rf.currentTerm)
 			//重新选举
 			rf.role = Follower
-			rf.votedFor = -1
+			//rf.votedFor = -1
 			rf.persist()
 			//rf.mu.Unlock()
 			return
@@ -113,10 +114,10 @@ func (rf *Raft) ElectionL() {
 		} else {
 			//选举失败
 			DPrintf("peer[%d] 选举失败", rf.me)
-			if rf.votedFor == rf.me {
+			/*if rf.votedFor == rf.me {
 				rf.votedFor = -1
 				rf.persist()
-			}
+			}*/
 			rf.role = Follower
 		}
 }
