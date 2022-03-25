@@ -28,12 +28,12 @@ func (rf *Raft) setElectionTime() {
 func (rf *Raft) GetRandElection(i int) time.Duration {
 	rand.Seed(time.Now().UnixNano() + int64(i))
 	//return time.Duration(rand.Int63() % 300 + 200) * time.Millisecond
-	return time.Duration(rand.Int63() % 500) * time.Millisecond
+	return time.Duration(rand.Int63() % 200) * time.Millisecond
 }
 //获取随机睡眠时间
 func (rf *Raft) GetRandSleepTime() time.Duration {
 	rand.Seed(time.Now().UnixNano())
-	return time.Duration(rand.Intn(50)+ 20) * time.Millisecond + time.Duration(rf.me*20)*time.Millisecond
+	return time.Duration(rand.Intn(50)+ 20) * time.Millisecond + time.Duration(rf.me*5)*time.Millisecond
 }
 
 //初始化nextIndex数组

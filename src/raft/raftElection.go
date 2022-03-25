@@ -11,8 +11,10 @@ func (rf *Raft) ElectionTicker() {
 		rf.mu.Lock()
 		if time.Now().After(rf.timer) && rf.role != Leader{
 			rf.ElectionL()
+		} else {
+			rf.mu.Unlock()
 		}
-		rf.mu.Unlock()
+		//rf.mu.Unlock()
 	}
 }
 
@@ -79,8 +81,9 @@ func (rf *Raft) ElectionL() {
 				rf.mu.Unlock()
 			}(i)
 		}
-
-		//rf.mu.Lock()
+		rf.mu.Unlock()
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
 		for count < len(rf.peers)/2 + 1 && finished != len(rf.peers){
 			cond.Wait()
 		}
@@ -101,16 +104,15 @@ func (rf *Raft) ElectionL() {
 			//说明赢得选举,要向其他服务端发送 RPC表明自己成为了Leader
 			rf.role = Leader
 			DPrintf("peer[%d]成为了term[%d]领导者", rf.me, rf.currentTerm)
-			rf.timer = time.Now()
+			rf.setElectionTime()
 			//初始化自身的nextIndex数组
 			rf.InitNextIndexL()
 			DPrintf("peer[%d]的nextIndex数组初始化为%v", rf.me, rf.nextIndex)
 			//启动心跳或者追加日志功能
 			go rf.AppendEntyiesOrHeartbeat()
 		} else {
-			//选举失败,重置选举时间
+			//选举失败
 			DPrintf("peer[%d] 选举失败", rf.me)
-			//rf.timer = time.Now()
 			if rf.votedFor == rf.me {
 				rf.votedFor = -1
 				rf.persist()
@@ -145,18 +147,19 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
 			rf.persist()
-			rf.timer = time.Now()
+			rf.setElectionTime()
 		}
 		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
 	} else if args.Term > rf.currentTerm {
-		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Foller
+		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Follower
 		rf.currentTerm = args.Term
 		rf.role = Follower
+		rf.votedFor = -1
 		//如果两份日志最后的条目任期号相同，那么日志比较长的那个就更加新。
 		if rf.CompareWhichIsNewerL(args.LastLogIndex, args.LastLogTerm) {
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
-			rf.timer = time.Now()
+			rf.setElectionTime()
 		}
 		rf.persist()
 	}
