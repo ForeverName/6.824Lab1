@@ -103,7 +103,7 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 			break
 		}
 		rf.mu.Unlock()
-		time.Sleep(50*time.Millisecond)
+		time.Sleep(100*time.Millisecond)
 	}
 
 }
