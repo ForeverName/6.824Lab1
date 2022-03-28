@@ -41,7 +41,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //args 和 reply 的类型（包括它们是否是指针）必须与 RPC 处理函数参数的声明类型匹配。 并且回复必须作为指针传递。
 func (ck *Clerk) Get(key string) string {
-
+	DPrintf("client[%d]执行Get操作", ck.clintId)
 	// You will have to modify this function.
 	//RPC调用服务端
 	ck.requestId++
@@ -52,12 +52,14 @@ func (ck *Clerk) Get(key string) string {
 	}
 	reply := GetReply{}
 	for true {
+		DPrintf("client[%d] get %v", ck.clintId, args)
 		ok := ck.servers[ck.recentLeaderId].Call("KVServer.Get", &args, &reply)
 		if !ok || reply.Err == ErrWrongLeader{
-			ck.requestId = (ck.recentLeaderId + 1) % len(ck.servers)
+			ck.recentLeaderId = (ck.recentLeaderId + 1) % len(ck.servers)
 		} else if reply.Err == ErrNoKey {
 			return ""
 		} else {
+			DPrintf("%v结果已经返回Value为:%s", args, reply.Value)
 			return reply.Value
 		}
 	}
@@ -86,18 +88,22 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	}
 	reply := PutAppendReply{}
 	for true {
+		DPrintf("client[%d]向kvserver[%d]执行%s操作,RPC传入参数为%v", ck.clintId, ck.recentLeaderId, op, args)
 		ok := ck.servers[ck.recentLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		if !ok || reply.Err == ErrWrongLeader {
-			ck.requestId = (ck.recentLeaderId + 1) % len(ck.servers)
+			ck.recentLeaderId = (ck.recentLeaderId + 1) % len(ck.servers)
 		} else if reply.Err == OK {
+			DPrintf("%v结果已经返回", args)
 			return
 		}
 	}
 }
 
 func (ck *Clerk) Put(key string, value string) {
+	DPrintf("client[%d]执行Put操作", ck.clintId)
 	ck.PutAppend(key, value, "Put")
 }
 func (ck *Clerk) Append(key string, value string) {
+	DPrintf("client[%d]执行Append操作", ck.clintId)
 	ck.PutAppend(key, value, "Append")
 }

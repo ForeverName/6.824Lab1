@@ -18,3 +18,8 @@ func (a AppendEntriesReply) String() string {
 func (a RequestVoteArgs) String() string {
 	return fmt.Sprintf("RequestVoteArgs{Term:%d, CandidateId:%d, LastLogIndex:%d, LastLogTerm:%d}", a.Term, a.CandidateId, a.LastLogIndex, a.LastLogTerm)
 }
+
+func (a ApplyMsg) String() string {
+	return fmt.Sprintf("ApplyMsg{CommandValid:%t, Command:%v, CommandIndex:%d}",
+		a.CommandValid, a.Command, a.CommandIndex)
+}

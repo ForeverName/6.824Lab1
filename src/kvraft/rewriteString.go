@@ -12,7 +12,7 @@ func (p PutAppendReply) String() string {
 }
 
 func (g GetArgs) String() string {
-	return fmt.Sprintf("GetArgs{Key:%s, RequestId:%s, ClientId:%s}", g.Key, g.RequestId, g.ClientId)
+	return fmt.Sprintf("GetArgs{Key:%s, RequestId:%d, ClientId:%d}", g.Key, g.RequestId, g.ClientId)
 }
 
 func (g GetReply) String() string {

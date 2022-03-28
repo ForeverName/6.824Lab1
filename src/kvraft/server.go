@@ -7,9 +7,10 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -56,7 +57,19 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	if _, b := kv.rf.GetState(); !b {
 		//说明不是Leader
 		reply.Err = ErrWrongLeader
+		return
 	}
+	DPrintf("kvserver[%d] 接收到了cilent[%d]的get操作:%v", kv.me, args.ClientId, args)
+	//先检查这个请求是否已经执行过了
+	kv.mu.Lock()
+	if kv.RepeatCheckL(args.ClientId, args.RequestId) {
+		//true 直接返回数据库中的结果即可
+		reply.Err = OK
+		reply.Value = kv.KVDB[args.Key]
+		kv.mu.Unlock()
+		return
+	}
+	kv.mu.Unlock()
 	//把日志写到raft服务器中
 	Log := Op{
 		Operation: "Get",
@@ -69,6 +82,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
 	ChLogIndex, exist := kv.waitApplyCh[logIndex]
 	if !exist {
+		DPrintf("kv.waitApplyCh[%d]不存在", logIndex)
 		kv.waitApplyCh[logIndex] = make(chan Op, 1)
 		ChLogIndex = kv.waitApplyCh[logIndex]
 	}
@@ -76,13 +90,16 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	//只有应用到raft状态机上才能保存到数据库中并且返回给client结果,所以等待ChLogIndex上传入的信息
 	select {
 	case  <- ChLogIndex:
-		if _, b :=kv.rf.GetState(); !b {
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		delete(kv.waitApplyCh, logIndex)
+		/*if _, b :=kv.rf.GetState(); !b {
 			reply.Err = ErrWrongLeader
-		}
+			return
+		}*/
 		reply.Err = OK
 		reply.Value = kv.KVDB[args.Key]
 	}
-
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -94,7 +111,18 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	if _, b := kv.rf.GetState(); !b {
 		//说明不是Leader
 		reply.Err = ErrWrongLeader
+		return
 	}
+	DPrintf("kvserver[%d]接收到client[%d]的%s操作:%v", kv.me, args.ClientId, args.Op, args)
+	//判断是否是已经执行过的请求
+	kv.mu.Lock()
+	if kv.RepeatCheckL(args.ClientId, args.RequestId) {
+		//true 直接返回数据库中的结果即可
+		reply.Err = OK
+		kv.mu.Unlock()
+		return
+	}
+	kv.mu.Unlock()
 	Log := Op{
 		Operation: args.Op,
 		Key: args.Key,
@@ -106,21 +134,32 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	ChLogIndex, exist := kv.waitApplyCh[logIndex]
 	if !exist {
+		DPrintf("kv.waitApplyCh[%d]不存在", logIndex)
 		kv.waitApplyCh[logIndex] = make(chan Op, 1)
 		ChLogIndex = kv.waitApplyCh[logIndex]
 	}
 	kv.mu.Unlock()
 	select {
-	case  <- ChLogIndex:
+	case <- time.After(time.Millisecond*500):
+		//如果超过这个时间应该再次检查Leader是否已经改变,
+		//比如logIndex=194发送到leader之后leader重新选举了，导致这个日志一直没有commit，
+		//如果client不重新发送的话，选举好之后新的leader就不会接收到这个日志，也就不会应用，
+		//此时apply会一直阻塞住等待leader应用新的日志（但没有所以会一直阻塞），<- ChLogIndex也会一直阻塞，
+		//最终结果就是状态机一直在无用的工作
+
 		if _, b :=kv.rf.GetState(); !b {
 			reply.Err = ErrWrongLeader
+			return
 		}
+	case  <- ChLogIndex:
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		delete(kv.waitApplyCh, logIndex)
+		/*if _, b :=kv.rf.GetState(); !b {
+			reply.Err = ErrWrongLeader
+			return
+		}*/
 		reply.Err = OK
-		if args.Op == "Put" {
-			kv.KVDB[args.Key] = args.Value
-		} else {
-			kv.KVDB[args.Key] += args.Value
-		}
 	}
 }
 
@@ -180,12 +219,35 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	go kv.ConsumeApply()
 	return kv
 }
+
 //处理apply返回的信息
 func (kv *KVServer) ConsumeApply() {
-	select {
-	case msg := <-kv.applyCh:
+	for msg := range kv.applyCh {
+		DPrintf("%v已经应用到kvserver[%d]", msg, kv.me)
 		logIndex := msg.CommandIndex
 		op := msg.Command.(Op)
+		clientId := op.ClientId
+		requestId := op.RequestId
+		kv.mu.Lock()
+		if kv.RepeatCheckL(clientId, requestId) {
+			kv.mu.Unlock()
+			continue
+		} else {
+			//执行对应command的操作
+			switch op.Operation {
+			case "Put":
+				kv.KVDB[op.Key] = op.Value
+			case "Append":
+				kv.KVDB[op.Key] += op.Value
+			}
+			kv.DuplicateDetection[clientId] = requestId
+		}
+		if _, exit := kv.waitApplyCh[logIndex]; !exit {
+			//针对不是Leader的服务端，其kv.waitApplyCh也没有需要等待通知返回给客户端的chan
+			kv.mu.Unlock()
+			continue
+		}
+		kv.mu.Unlock()
 		kv.waitApplyCh[logIndex] <- op
 	}
 }
