@@ -59,7 +59,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	DPrintf("kvserver[%d] 接收到了cilent[%d]的get操作:%v", kv.me, args.ClientId, args)
+	DPrintf("kvserver[%d]接收到了cilent[%d]的get操作:%v", kv.me, args.ClientId, args)
 	//先检查这个请求是否已经执行过了
 	kv.mu.Lock()
 	if kv.RepeatCheckL(args.ClientId, args.RequestId) {
@@ -82,24 +82,39 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
 	ChLogIndex, exist := kv.waitApplyCh[logIndex]
 	if !exist {
-		DPrintf("kv.waitApplyCh[%d]不存在", logIndex)
+		DPrintf("kv[%d].waitApplyCh[%d]不存在", kv.me, logIndex)
 		kv.waitApplyCh[logIndex] = make(chan Op, 1)
 		ChLogIndex = kv.waitApplyCh[logIndex]
 	}
 	kv.mu.Unlock()
 	//只有应用到raft状态机上才能保存到数据库中并且返回给client结果,所以等待ChLogIndex上传入的信息
 	select {
-	case  <- ChLogIndex:
-		kv.mu.Lock()
-		defer kv.mu.Unlock()
-		delete(kv.waitApplyCh, logIndex)
-		/*if _, b :=kv.rf.GetState(); !b {
+	case <- time.After(time.Millisecond*600):
+		DPrintf("kvserver[%d]接收到了cilent[%d]的get操作:%v超时返回timeout", kv.me, args.ClientId, args)
 			reply.Err = ErrWrongLeader
-			return
-		}*/
-		reply.Err = OK
-		reply.Value = kv.KVDB[args.Key]
+	case op := <- ChLogIndex:
+		if _, b :=kv.rf.GetState(); !b {
+			reply.Err = ErrWrongLeader
+		}else {
+			if op.ClientId == Log.ClientId && op.RequestId == Log.RequestId {
+				//这样才能唯一定位一个操作是否已经执行了，防止旧leader同步日志的时候把新leader上logIndex位置上的日志当作这个日志
+				kv.mu.Lock()
+				if value, exist := kv.KVDB[args.Key]; exist {
+					reply.Err = OK
+					reply.Value = value
+				} else {
+					reply.Err = ErrNoKey
+				}
+				kv.mu.Unlock()
+			} else {
+				reply.Err = ErrWrongLeader
+			}
+		}
 	}
+
+	kv.mu.Lock()
+	delete(kv.waitApplyCh, logIndex)
+	kv.mu.Unlock()
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -134,33 +149,39 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	ChLogIndex, exist := kv.waitApplyCh[logIndex]
 	if !exist {
-		DPrintf("kv.waitApplyCh[%d]不存在", logIndex)
+		DPrintf("kv[%d].waitApplyCh[%d]不存在", kv.me, logIndex)
 		kv.waitApplyCh[logIndex] = make(chan Op, 1)
 		ChLogIndex = kv.waitApplyCh[logIndex]
 	}
 	kv.mu.Unlock()
 	select {
-	case <- time.After(time.Millisecond*500):
+	case <- time.After(time.Millisecond*600):
 		//如果超过这个时间应该再次检查Leader是否已经改变,
 		//比如logIndex=194发送到leader之后leader重新选举了，导致这个日志一直没有commit，
 		//如果client不重新发送的话，选举好之后新的leader就不会接收到这个日志，也就不会应用，
 		//此时apply会一直阻塞住等待leader应用新的日志（但没有所以会一直阻塞），<- ChLogIndex也会一直阻塞，
 		//最终结果就是状态机一直在无用的工作
-
+		DPrintf("kvserver[%d]接收到了client[%d]的%s操作:%v超时返回timeout", kv.me, args.ClientId, args.Op, args)
+		reply.Err = ErrWrongLeader
+	case op:= <- ChLogIndex:
 		if _, b :=kv.rf.GetState(); !b {
 			reply.Err = ErrWrongLeader
-			return
+		}else {
+			if op.ClientId == Log.ClientId && op.RequestId == Log.RequestId {
+				//如果不做这个判断，会导致以下情形出现错误：
+				//当旧leader不断接收到一个只能连接到这个服务器的client[1]的操作时put{key:1,value:15}，由于还没到超时时间，
+				//旧leader和新leader连接上了，这时新leader会同步日志给旧leader，而这个旧的put{key:1,value:15}目前的logIndex为5，
+				//此时新的leader已经有了logindex为5的日志，这时如果<- ChLogIndex接收到内容(旧的leader也有waitApplyCh[5]在等待内容)，
+				//会误以为put{key:1,value:15}应用成功，而实际上并没有，所以需要判断上面两个条件，上面两个条件唯一判定一个客户端的一个操作
+				reply.Err = OK
+			} else {
+				reply.Err = ErrWrongLeader
+			}
 		}
-	case  <- ChLogIndex:
-		kv.mu.Lock()
-		defer kv.mu.Unlock()
-		delete(kv.waitApplyCh, logIndex)
-		/*if _, b :=kv.rf.GetState(); !b {
-			reply.Err = ErrWrongLeader
-			return
-		}*/
-		reply.Err = OK
 	}
+	kv.mu.Lock()
+	delete(kv.waitApplyCh, logIndex)
+	kv.mu.Unlock()
 }
 
 //
@@ -208,7 +229,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
-
+	kv.mu.Lock()
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
@@ -216,6 +237,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.KVDB = make(map[string]string)
 	kv.waitApplyCh = make(map[int]chan Op)
 	kv.DuplicateDetection = make(map[int64]int)
+	kv.mu.Unlock()
 	go kv.ConsumeApply()
 	return kv
 }
@@ -241,13 +263,15 @@ func (kv *KVServer) ConsumeApply() {
 				kv.KVDB[op.Key] += op.Value
 			}
 			kv.DuplicateDetection[clientId] = requestId
+			DPrintf("kvserver[%d]的map为:%v", kv.me, kv.KVDB)
 		}
 		if _, exit := kv.waitApplyCh[logIndex]; !exit {
 			//针对不是Leader的服务端，其kv.waitApplyCh也没有需要等待通知返回给客户端的chan
 			kv.mu.Unlock()
 			continue
 		}
+		ops := kv.waitApplyCh[logIndex]
 		kv.mu.Unlock()
-		kv.waitApplyCh[logIndex] <- op
+		ops <- op
 	}
 }

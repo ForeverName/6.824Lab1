@@ -504,13 +504,16 @@ func TestOnePartition3A(t *testing.T) {
 	Put(cfg, ck, "1", "13")
 
 	cfg.begin("Test: progress in majority (3A)")
-
-	p1, p2 := cfg.make_partition()
-	cfg.partition(p1, p2)
-
-	ckp1 := cfg.makeClient(p1)  // connect ckp1 to p1
+	DPrintf("将服务器划分为2组，并将当前领导者置于少数,也就是p[2]")
+	p1, p2 := cfg.make_partition() // 将服务器划分为 2 组，并将当前领导者置于少数
+	cfg.partition(p1, p2) //设置 2 个分区，每个分区中的服务器之间具有连接性。
+	DPrintf("p1中的服务器为:%v,p2中的服务器为:%v", p1, p2)
+	ckp1 := cfg.makeClient(p1)  // connect ckp1 to p1  使用Clerk特定服务器名称创建clerk。将其连接到所有服务器，但现在仅启用与[]中的服务器连接。
+	DPrintf("client[%d]与p1连接", ckp1.clintId)
 	ckp2a := cfg.makeClient(p2) // connect ckp2a to p2
+	DPrintf("client[%d]与p2连接", ckp2a.clintId)
 	ckp2b := cfg.makeClient(p2) // connect ckp2b to p2
+	DPrintf("client[%d]与p2连接", ckp2b.clintId)
 
 	Put(cfg, ckp1, "1", "14")
 	check(cfg, t, ckp1, "1", "14")
@@ -543,15 +546,15 @@ func TestOnePartition3A(t *testing.T) {
 	check(cfg, t, ckp1, "1", "16")
 
 	cfg.end()
-
+	DPrintf("completion after heal")
 	cfg.begin("Test: completion after heal (3A)")
 
+	DPrintf("多数与少数全部连接之后")
 	cfg.ConnectAll()
 	cfg.ConnectClient(ckp2a, cfg.All())
 	cfg.ConnectClient(ckp2b, cfg.All())
 
 	time.Sleep(electionTimeout)
-
 	select {
 	case <-done0:
 	case <-time.After(30 * 100 * time.Millisecond):
