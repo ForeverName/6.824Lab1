@@ -445,7 +445,7 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 	}
 }
 
-func TestBasic3A(t *testing.T) {
+/*func TestBasic3A(t *testing.T) {
 	// Test: one client (3A) ...
 	GenericTest(t, "3A", 1, false, false, false, -1)
 }
@@ -490,12 +490,12 @@ func TestUnreliableOneKey3A(t *testing.T) {
 	checkConcurrentAppends(t, vx, counts)
 
 	cfg.end()
-}
+}*/
 
 // Submit a request in the minority partition and check that the requests
 // doesn't go through until the partition heals.  The leader in the original
 // network ends up in the minority partition.
-func TestOnePartition3A(t *testing.T) {
+/*func TestOnePartition3A(t *testing.T) {
 	const nservers = 5
 	cfg := make_config(t, nservers, false, -1)
 	defer cfg.cleanup()
@@ -596,14 +596,14 @@ func TestPersistConcurrent3A(t *testing.T) {
 func TestPersistConcurrentUnreliable3A(t *testing.T) {
 	// Test: unreliable net, restarts, many clients (3A) ...
 	GenericTest(t, "3A", 5, true, true, false, -1)
-}
+}*/
 
 func TestPersistPartition3A(t *testing.T) {
 	// Test: restarts, partitions, many clients (3A) ...
 	GenericTest(t, "3A", 5, false, true, true, -1)
 }
 
-func TestPersistPartitionUnreliable3A(t *testing.T) {
+/*func TestPersistPartitionUnreliable3A(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, many clients (3A) ...
 	GenericTest(t, "3A", 5, true, true, true, -1)
 }
@@ -611,7 +611,7 @@ func TestPersistPartitionUnreliable3A(t *testing.T) {
 func TestPersistPartitionUnreliableLinearizable3A(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, linearizability checks (3A) ...
 	GenericTestLinearizability(t, "3A", 15, 7, true, true, true, -1)
-}
+}*/
 
 //
 // if one server falls behind, then rejoins, does it

@@ -32,7 +32,14 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 					prevLogTerm := 0
 					if len(rf.log) != 0 {
 						prevLogIndex = rf.nextIndex[serverId] - 1
+						//特判一下防止下标越界，因为当旧领导同步日志当日志长度变短时，如果身为旧leader以前发的心跳还在发（还没有来得及变更），
+						//会导致prevLogIndex大于len(rf.log)
 						if prevLogIndex != 0 {
+							if prevLogIndex > len(rf.log) {
+								//说明是旧leader还在发送的消息，直接退出即可
+								return
+							}
+							DPrintf("peer[%d] len(rf.log)=%d,prevLogIndex[%d]=%d", rf.me, len(rf.log), serverId, prevLogIndex)
 							prevLogTerm = rf.log[prevLogIndex - 1].Term
 						}
 					}
@@ -63,11 +70,11 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 						rf.mu.Unlock()
 						return
 					}*/
-					DPrintf("peer[%d]发送peer[%d]的日志后返回结果为为%v",rf.me, serverId, reply)
+					//DPrintf("peer[%d]发送peer[%d]的日志后返回结果为为%v",rf.me, serverId, reply)
 					if !reply.Success {
 						if reply.Term > term {
 							//说明是旧leader发的消息
-							DPrintf("旧领导peer[%d]发送给peer[%d]的消息现在返回", rf.me, serverId)
+							//DPrintf("旧领导peer[%d]发送给peer[%d]的消息现在返回", rf.me, serverId)
 							rf.role = Follower
 							rf.setElectionTime()
 							if rf.currentTerm < reply.Term {

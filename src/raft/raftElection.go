@@ -93,7 +93,7 @@ func (rf *Raft) ElectionL() {
 		//导致peer[1]再一次选举超时，peer[1]成为候选者在term[2]sendRequestVote给peer[0]和peer[2],此时term以及又+1，导致peer[1]赢得选举，此时peer[0]
 		//又开始处理reply，如果没有这个判断，会导致peer[0]也可以成为领导者。
 		if rf.role != Candidate || rf.currentTerm != term {
-			DPrintf("rf.role=%d,term=%d,rf.currentTerm=%d", rf.role, term, rf.currentTerm)
+			//DPrintf("rf.role=%d,term=%d,rf.currentTerm=%d", rf.role, term, rf.currentTerm)
 			//重新选举
 			rf.role = Follower
 			//rf.votedFor = -1
@@ -140,8 +140,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的term:=[%d],peer[%d]的term:=[%d]",
-			args.CandidateId, rf.me, args.CandidateId,  args.Term, rf.me, rf.currentTerm)
+		//DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的term:=[%d],peer[%d]的term:=[%d]",
+			//args.CandidateId, rf.me, args.CandidateId,  args.Term, rf.me, rf.currentTerm)
 	}else if args.Term == rf.currentTerm {
 		//首先要比较哪个日志更新，只有日志更加新的才能有资格成为领导者 （候选人的日志至少和自己一样新）2B
 		if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.CompareWhichIsNewerL(args.LastLogIndex, args.LastLogTerm){
@@ -150,7 +150,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.persist()
 			rf.setElectionTime()
 		}
-		DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
+		//DPrintf("peer[%d]请求peer[%d]投票，peer[%d]的rf.votedFor=%d", args.CandidateId, rf.me, rf.me, rf.votedFor)
 	} else if args.Term > rf.currentTerm {
 		//args.Term > rf.currentTerm 时把rf.votedFor重置为-1 和 rf.role 重置为 Follower
 		rf.currentTerm = args.Term
