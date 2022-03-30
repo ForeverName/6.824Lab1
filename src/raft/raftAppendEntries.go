@@ -33,6 +33,8 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 					if len(rf.log) != 0 {
 						prevLogIndex = rf.nextIndex[serverId] - 1
 						if prevLogIndex != 0 {
+							//特判一下防止下标越界，因为当旧领导同步日志当日志长度变短时，如果身为旧leader以前发的心跳还在发（还没有来得及变更），
+							//会导致prevLogIndex大于len(rf.log)
 							if prevLogIndex > len(rf.log) {
 								//说明是旧leader还在发送的消息，直接退出即可
 								return
