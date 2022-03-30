@@ -33,6 +33,10 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 					if len(rf.log) != 0 {
 						prevLogIndex = rf.nextIndex[serverId] - 1
 						if prevLogIndex != 0 {
+							if prevLogIndex > len(rf.log) {
+								//说明是旧leader还在发送的消息，直接退出即可
+								return
+							}
 							prevLogTerm = rf.log[prevLogIndex - 1].Term
 						}
 					}
