@@ -603,7 +603,7 @@ func TestPersistPartition3A(t *testing.T) {
 	GenericTest(t, "3A", 5, false, true, true, -1)
 }
 
-/*func TestPersistPartitionUnreliable3A(t *testing.T) {
+func TestPersistPartitionUnreliable3A(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, many clients (3A) ...
 	GenericTest(t, "3A", 5, true, true, true, -1)
 }
@@ -611,7 +611,7 @@ func TestPersistPartition3A(t *testing.T) {
 func TestPersistPartitionUnreliableLinearizable3A(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, linearizability checks (3A) ...
 	GenericTestLinearizability(t, "3A", 15, 7, true, true, true, -1)
-}*/
+}
 
 //
 // if one server falls behind, then rejoins, does it
