@@ -271,7 +271,7 @@ func (kv *KVServer) ConsumeApply() {
 			continue
 		}
 		ops := kv.waitApplyCh[logIndex]
-		kv.mu.Unlock()
 		ops <- op
+		kv.mu.Unlock()
 	}
 }
