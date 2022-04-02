@@ -10,7 +10,7 @@ type Clerk struct {
 	// You will have to modify this struct.
 	requestId int //为了处理重复命令，对每个命令有一个唯一的序号
 	recentLeaderId int //记录最近一次的领导者id
-	clintId int64 //唯一定义每个client的id值
+	clientId int64 //唯一定义每个client的id值
 }
 
 func nrand() int64 {
@@ -24,7 +24,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
-	ck.clintId = nrand()
+	ck.clientId = nrand()
 	return ck
 }
 
@@ -47,9 +47,9 @@ func (ck *Clerk) Get(key string) string {
 	args := GetArgs{
 		Key: key,
 		RequestId: ck.requestId,
-		ClientId: ck.clintId,
+		ClientId: ck.clientId,
 	}
-	DPrintf("client[%d]执行get操作,传入参数为:%v", ck.clintId, args)
+	DPrintf("client[%d]执行get操作,传入参数为:%v", ck.clientId, args)
 	for true {
 		reply := GetReply{}
 		ok := ck.servers[ck.recentLeaderId].Call("KVServer.Get", &args, &reply)
@@ -58,7 +58,7 @@ func (ck *Clerk) Get(key string) string {
 		} else if reply.Err == ErrNoKey {
 			return ""
 		} else if reply.Err == OK{
-			DPrintf("client[%d]执行get[%s]结果已经返回Value为:%s", ck.clintId, args.Key, reply.Value)
+			DPrintf("client[%d]执行get[%s]结果已经返回Value为:%s", ck.clientId, args.Key, reply.Value)
 			return reply.Value
 		}
 	}
@@ -82,17 +82,17 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Key: key,
 		Value: value,
 		Op: op,
-		ClientId: ck.clintId,
+		ClientId: ck.clientId,
 		RequestId: ck.requestId,
 	}
-	DPrintf("client[%d]向kvserver[%d]执行%s操作,RPC传入参数为%v", ck.clintId, ck.recentLeaderId, op, args)
+	DPrintf("client[%d]向kvserver[%d]执行%s操作,RPC传入参数为%v", ck.clientId, ck.recentLeaderId, op, args)
 	for true {
 		reply := PutAppendReply{}
 		ok := ck.servers[ck.recentLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		if !ok || reply.Err == ErrWrongLeader {
 			ck.recentLeaderId = (ck.recentLeaderId + 1) % len(ck.servers)
 		} else if reply.Err == OK {
-			DPrintf("client[%d]向kvserver[%d]执行%v操作的结果已经返回",ck.clintId,ck.recentLeaderId,args)
+			DPrintf("client[%d]向kvserver[%d]执行%v操作的结果已经返回",ck.clientId,ck.recentLeaderId,args)
 			return
 		}
 	}

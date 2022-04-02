@@ -509,11 +509,11 @@ func TestOnePartition3A(t *testing.T) {
 	cfg.partition(p1, p2) //设置 2 个分区，每个分区中的服务器之间具有连接性。
 	DPrintf("p1中的服务器为:%v,p2中的服务器为:%v", p1, p2)
 	ckp1 := cfg.makeClient(p1)  // connect ckp1 to p1  使用Clerk特定服务器名称创建clerk。将其连接到所有服务器，但现在仅启用与[]中的服务器连接。
-	DPrintf("client[%d]与p1连接", ckp1.clintId)
+	DPrintf("client[%d]与p1连接", ckp1.clientId)
 	ckp2a := cfg.makeClient(p2) // connect ckp2a to p2
-	DPrintf("client[%d]与p2连接", ckp2a.clintId)
+	DPrintf("client[%d]与p2连接", ckp2a.clientId)
 	ckp2b := cfg.makeClient(p2) // connect ckp2b to p2
-	DPrintf("client[%d]与p2连接", ckp2b.clintId)
+	DPrintf("client[%d]与p2连接", ckp2b.clientId)
 
 	Put(cfg, ckp1, "1", "14")
 	check(cfg, t, ckp1, "1", "14")
