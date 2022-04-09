@@ -1,5 +1,7 @@
 package kvraft
 
+import "bytes"
+import "../labgob"
 //检查请求是否已经执行了
 func (kv *KVServer) RepeatCheckL(clientId int64, requestId int) bool {
 	lastRequestId, exist := kv.DuplicateDetection[clientId]
@@ -11,4 +13,25 @@ func (kv *KVServer) RepeatCheckL(clientId int64, requestId int) bool {
 		return true
 	}
 	return false
+}
+
+func (kv *KVServer) InstallSnapshot(snapshot []byte) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if snapshot == nil || len(snapshot) < 1 {
+		return
+	}
+
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+
+	var kvdb map[string]string
+	var duplicateDetection map[int64]int
+
+	if d.Decode(&kvdb) != nil || d.Decode(&duplicateDetection) != nil {
+		DPrintf("KVSERVER %d read persister got a problem!!!!!!!!!!",kv.me)
+	} else {
+		kv.KVDB = kvdb
+		kv.DuplicateDetection = duplicateDetection
+	}
 }

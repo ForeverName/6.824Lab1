@@ -103,6 +103,10 @@ type Raft struct {
 	votedFor int  //投给哪个服务器选票，-1的话就表示还没有投给任何服务器
 	log []Entry // 日志条目：每个条目包含了用于状态机的命令，以及领导者接收到该条目时的任期（第一个索引为1）
 				// commitIndex - 1为对应切片的下标，因为log第一个索引为1
+	// Lab3B
+	LastIncludedIndex int // 快照中包含的最后日志条目的索引值
+	LastIncludedTerm int // 快照中包含的最后日志条目的任期号
+
 	applyCh chan ApplyMsg
 	applyCond *sync.Cond
 	role int //表明Raft节点的目前身份
@@ -162,6 +166,8 @@ func (rf *Raft) persist() {
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
+	e.Encode(rf.LastIncludedIndex)
+	e.Encode(rf.LastIncludedTerm)
 	rf.persister.SaveRaftState(w.Bytes())
 }
 
@@ -191,15 +197,20 @@ func (rf *Raft) readPersist(data []byte) {
 	var currentTerm int
 	var votedFor int
 	var log []Entry
-
+	var lastIncludedIndex int
+	var lastIncludedTerm int
 	if d.Decode(&currentTerm) != nil ||
 		d.Decode(&votedFor) != nil ||
-		d.Decode(&log) != nil {
+		d.Decode(&log) != nil ||
+		d.Decode(&lastIncludedIndex) != nil ||
+		d.Decode(&lastIncludedTerm) != nil{
 		DPrintf("peer[%d]readPersist error", rf.me)
 	} else {
 		rf.currentTerm = currentTerm
 		rf.votedFor = votedFor
 		rf.log = log
+		rf.LastIncludedIndex = lastIncludedIndex
+		rf.LastIncludedTerm = lastIncludedTerm
 	}
 }
 

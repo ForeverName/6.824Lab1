@@ -45,6 +45,9 @@ type KVServer struct {
 	KVDB map[string]string //模拟一个数据库，数据都存在map里面
 	waitApplyCh map[int]chan Op // map[logIndex]chan 对于每一个logIndex建立一个对应的通道来通知已经完成
 	DuplicateDetection map[int64]int //存储每一个clientId对应的最后一个RequestId，为了防止重复请求
+
+	// Lab3B
+	LastIncludedIndex int
 }
 
 
@@ -238,6 +241,11 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.waitApplyCh = make(map[int]chan Op)
 	kv.DuplicateDetection = make(map[int64]int)
 	kv.mu.Unlock()
+	// Lab3B
+	snapshot := persister.ReadSnapshot()
+	if len(snapshot) > 0 {
+		kv.InstallSnapshot(snapshot)
+	}
 	go kv.ConsumeApply()
 	return kv
 }
