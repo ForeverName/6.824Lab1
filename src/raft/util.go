@@ -40,9 +40,22 @@ func (rf *Raft) GetRandSleepTime() time.Duration {
 func (rf *Raft) InitNextIndexL() {
 	for i, _ := range rf.nextIndex {
 		if len(rf.log) == 0 {
-			rf.nextIndex[i] = 1
+			rf.nextIndex[i] = rf.LastIncludedIndex + 1
 		}else {
 			rf.nextIndex[i] = rf.log[len(rf.log) - 1].LogIndex + 1
 		}
 	}
+}
+//检查是否需要进行快照
+func (rf *Raft) CheckLogSize(maxraftstate int) bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.persister.RaftStateSize() >= maxraftstate {
+		return true
+	}
+	return false
+}
+//日志Index转换为Log数组下标
+func (rf *Raft) LogIndexToLogArrayIndex(LogIndex int) int {
+	return LogIndex - rf.LastIncludedIndex - 1
 }

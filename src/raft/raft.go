@@ -48,6 +48,11 @@ type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int
+
+	// Lab3B快照
+	Snapshot []byte
+	LastIncludedIndex int
+	LastIncludedTerm int
 }
 
 //定义一个结构来记录追加日志RPC的信息。
@@ -161,6 +166,9 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+	rf.persister.SaveRaftState(rf.RaftStateForPersisit())
+}
+func (rf *Raft) RaftStateForPersisit() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
@@ -168,9 +176,8 @@ func (rf *Raft) persist() {
 	e.Encode(rf.log)
 	e.Encode(rf.LastIncludedIndex)
 	e.Encode(rf.LastIncludedTerm)
-	rf.persister.SaveRaftState(w.Bytes())
+	return w.Bytes()
 }
-
 
 //
 // restore previously persisted state.  恢复以前的持久状态。
@@ -275,7 +282,11 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntries, reply *Append
 	ok := rf.peers[server].Call("Raft.AppendEntriesHandler", args, reply)
 	return ok
 }
-
+// 处理快照  Lab3B
+func (rf *Raft) sendSnapshot(server int, args *InstallSnapShotArgs, reply *InstallSnapShotReply) bool {
+	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	return ok
+}
 
 //
 // the service using Raft (e.g. a k/v server) wants to start					使用 Raft 的服务（例如 k/v 服务器）
@@ -371,6 +382,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.mu.Unlock()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.InitInstallSnapshot()
 	DPrintf("peer[%d]初始化成功,且currentTerm=%d,votedFor=%d,log=%v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 	go rf.ElectionTicker()
 	//go rf.AppendEntyiesOrHeartbeat()

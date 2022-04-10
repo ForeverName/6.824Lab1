@@ -15,7 +15,8 @@ func (kv *KVServer) RepeatCheckL(clientId int64, requestId int) bool {
 	return false
 }
 
-func (kv *KVServer) InstallSnapshot(snapshot []byte) {
+// 安装快照
+func (kv *KVServer) InstallSnapshot(snapshot []byte, lastIncludedIndex int) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 	if snapshot == nil || len(snapshot) < 1 {
@@ -34,4 +35,6 @@ func (kv *KVServer) InstallSnapshot(snapshot []byte) {
 		kv.KVDB = kvdb
 		kv.DuplicateDetection = duplicateDetection
 	}
+	kv.ApplyLogIndex = lastIncludedIndex
 }
+

@@ -47,7 +47,7 @@ type KVServer struct {
 	DuplicateDetection map[int64]int //存储每一个clientId对应的最后一个RequestId，为了防止重复请求
 
 	// Lab3B
-	LastIncludedIndex int
+	ApplyLogIndex int
 }
 
 
@@ -241,11 +241,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.waitApplyCh = make(map[int]chan Op)
 	kv.DuplicateDetection = make(map[int64]int)
 	kv.mu.Unlock()
-	// Lab3B
-	snapshot := persister.ReadSnapshot()
-	if len(snapshot) > 0 {
-		kv.InstallSnapshot(snapshot)
-	}
 	go kv.ConsumeApply()
 	return kv
 }
@@ -254,6 +249,11 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 func (kv *KVServer) ConsumeApply() {
 	for msg := range kv.applyCh {
 		DPrintf("%v已经应用到kvserver[%d]", msg, kv.me)
+		if !msg.CommandValid {
+			// 安装快照
+			kv.InstallSnapshot(msg.Snapshot, msg.LastIncludedIndex)
+			continue
+		}
 		logIndex := msg.CommandIndex
 		op := msg.Command.(Op)
 		clientId := op.ClientId
