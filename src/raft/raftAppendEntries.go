@@ -167,32 +167,29 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 		return
 	}
 
-	//说明是心跳,心跳也需要检查规则rf.Rule2AndRule3L(),以免一个旧领导者(现在是follower,日志条目比新领导者多，但是很多没有commit)
+	//心跳也需要检查规则rf.Rule2AndRule3L(),以免一个旧领导者(现在是follower,日志条目比新领导者多，但是很多没有commit)
 	//接收到新领导的心跳导致rf.log[len(rf.log)-1].LogIndex > PrevLogIndex,但是rf.log[PrevLogIndex-1].Term != PrevLogTerm
 	//而把rf.commitIndex更新，实际上旧领导者还没有接收到新领导的日志，会导致旧领导者的旧日志被提交而引发日志不一致的错误.
-	if len(args.Entries) == 0 {
-		//DPrintf("peer[%d]收到peer[%d]发的在term[%d]的心跳消息", rf.me, args.LeaderId, args.Term)
+	if args.Term == rf.currentTerm {
+		if rf.role != Follower {
+			rf.role = Follower
+			rf.persist()
+		}
+	}
+	if args.Term > rf.currentTerm {
+		rf.currentTerm = args.Term
 		rf.role = Follower
-		rf.updateCommitIndexL(args.LeaderCommit)
-		if args.Term > rf.currentTerm {
-			rf.currentTerm = args.Term
-			rf.role = Follower
-			rf.votedFor = -1
-			rf.persist()
-		}
-		if args.Term == rf.currentTerm {
-			rf.role = Follower
-			rf.persist()
-		}
-		reply.Success = true
-		return
+		rf.votedFor = -1
+		rf.persist()
 	}
 
 	//追加新的日志条目
 	DPrintf("peer[%d]原来的日志条目为%v,追加的日志条目为%v", rf.me, rf.log, args.Entries)
 	//去除重复的才能添加到日志里面
 	rf.log = append(rf.log[:args.PrevLogIndex], args.Entries...)
-	rf.persist()
+	if len(args.Entries) != 0 {
+		rf.persist()
+	}
 	DPrintf("peer[%d]追加完成后的日志条目为%v", rf.me, rf.log)
 	//更新接收者raft的commitIndex
 	rf.updateCommitIndexL(args.LeaderCommit)
