@@ -4,6 +4,7 @@ import (
 	"../labgob"
 	"../labrpc"
 	"../raft"
+	"bytes"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -258,6 +259,20 @@ func (kv *KVServer) ConsumeApply() {
 		op := msg.Command.(Op)
 		clientId := op.ClientId
 		requestId := op.RequestId
+		kv.ApplyLogIndex = logIndex
+		if kv.maxraftstate != -1 && kv.rf.CheckLogSize(kv.maxraftstate) {
+			kv.mu.Lock()
+			w := new(bytes.Buffer)
+			e := labgob.NewEncoder(w)
+			e.Encode(kv.KVDB)
+			e.Encode(kv.DuplicateDetection)
+			snapshot := w.Bytes()
+			applyLogIndex := kv.ApplyLogIndex
+			kv.mu.Unlock()
+			go func(snapshot []byte, applyLogIndex int) {
+				kv.rf.TakeSnapshotAndTruncateTheLog(snapshot, applyLogIndex)
+			}(snapshot, applyLogIndex)
+		}
 		kv.mu.Lock()
 		if kv.RepeatCheckL(clientId, requestId) {
 			kv.mu.Unlock()

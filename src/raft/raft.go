@@ -284,7 +284,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntries, reply *Append
 }
 // 处理快照  Lab3B
 func (rf *Raft) sendSnapshot(server int, args *InstallSnapShotArgs, reply *InstallSnapShotReply) bool {
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 	return ok
 }
 
@@ -317,7 +317,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	if len(rf.log) == 0 {
 		//第一个索引为1
-		index = 1
+		index = 1 + rf.LastIncludedIndex
 	}else {
 		index = rf.log[len(rf.log)-1].LogIndex + 1
 	}
@@ -382,7 +382,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.mu.Unlock()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-	rf.InitInstallSnapshot()
+	if rf.currentTerm != 0 {
+		rf.InstallSnapshotToApplication()
+	}
 	DPrintf("peer[%d]初始化成功,且currentTerm=%d,votedFor=%d,log=%v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 	go rf.ElectionTicker()
 	//go rf.AppendEntyiesOrHeartbeat()

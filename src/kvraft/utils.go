@@ -22,7 +22,7 @@ func (kv *KVServer) InstallSnapshot(snapshot []byte, lastIncludedIndex int) {
 	if snapshot == nil || len(snapshot) < 1 {
 		return
 	}
-
+	DPrintf("kv[%d]安装快照,lastIncludedIndex=%d", kv.me, lastIncludedIndex)
 	r := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(r)
 

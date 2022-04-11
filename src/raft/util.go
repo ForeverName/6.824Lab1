@@ -57,5 +57,6 @@ func (rf *Raft) CheckLogSize(maxraftstate int) bool {
 }
 //日志Index转换为Log数组下标
 func (rf *Raft) LogIndexToLogArrayIndex(LogIndex int) int {
+	DPrintf("LogIndex=%d, rf.LastIncludedIndex=%d, LogIndex - rf.LastIncludedIndex - 1=%d", LogIndex, rf.LastIncludedIndex, LogIndex - rf.LastIncludedIndex - 1)
 	return LogIndex - rf.LastIncludedIndex - 1
 }

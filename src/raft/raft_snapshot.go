@@ -17,13 +17,14 @@ type InstallSnapShotReply struct {
 func (rf *Raft) TakeSnapshotAndTruncateTheLog(snapshot []byte , applyLogIndex int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	DPrintf("peer[%d]收到生成快照请求rf.LastIncludedIndex=%d, applyLogIndex=%d", rf.me, rf.LastIncludedIndex, applyLogIndex)
 	if applyLogIndex <= rf.LastIncludedIndex {
 		return
 	}
 	compressedLogLength := applyLogIndex - rf.LastIncludedIndex
 
-	rf.LastIncludedIndex = applyLogIndex
 	rf.LastIncludedTerm = rf.log[rf.LogIndexToLogArrayIndex(applyLogIndex)].Term
+	rf.LastIncludedIndex = applyLogIndex
 
 	// 压缩日志
 	tempLog := make([]Entry, len(rf.log) - compressedLogLength)
@@ -33,8 +34,8 @@ func (rf *Raft) TakeSnapshotAndTruncateTheLog(snapshot []byte , applyLogIndex in
 	// 把snapshot和raftstate持久化
 	rf.persister.SaveStateAndSnapshot(rf.RaftStateForPersisit(), snapshot)
 }
-//节点崩溃恢复时要安装快照
-func (rf *Raft) InitInstallSnapshot() {
+//安装快照到应用层
+func (rf *Raft) InstallSnapshotToApplication() {
 	applyMsg := ApplyMsg{
 		CommandValid: false,
 		Snapshot: rf.persister.ReadSnapshot(),
@@ -54,9 +55,23 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapShotArgs, reply *InstallSnapSho
 	if args.Term < rf.currentTerm {
 		return
 	}
-
+	rf.setElectionTime()
 	if args.Term > rf.currentTerm {
-		// TODO 写道这了
+		rf.currentTerm = args.Term
+		rf.role = Follower
+		rf.votedFor = -1
+		rf.persist()
 	}
+	// 如果leader发送的快照还没有follow的本地快照长，则直接返回
+	if args.LastIncludedIndex <= rf.LastIncludedIndex {
+		return
+	} else { // leader快照比本地长
+		rf.log = make([]Entry, 0)
+	}
+	rf.LastIncludedIndex = args.LastIncludedIndex
+	rf.LastIncludedTerm = args.LastIncludedTerm
+
+	rf.persister.SaveStateAndSnapshot(rf.RaftStateForPersisit(), args.Data)
+	rf.InstallSnapshotToApplication()
 }
 

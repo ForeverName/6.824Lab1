@@ -49,6 +49,9 @@ func (rf *Raft) ElectionL() {
 				if len(rf.log) != 0 {
 					args.LastLogIndex = rf.log[len(rf.log) - 1].LogIndex
 					args.LastLogTerm = rf.log[len(rf.log)-1].Term
+				} else {
+					args.LastLogIndex = rf.LastIncludedIndex
+					args.LastLogTerm = rf.LastIncludedTerm
 				}
 				reply := RequestVoteReply{}
 				rf.mu.Unlock()
@@ -173,19 +176,33 @@ func (rf *Raft) CompareWhichIsNewerL(index int, term int) bool {
 	//较长的那个就更加新。
 	//rf.mu.Lock()
 	//defer rf.mu.Unlock() 进入到这个函数之前已经获取锁，所以这里不用再加锁了，否则会造成死锁
-	if len(rf.log) == 0 {
+	if len(rf.log) == 0 && rf.LastIncludedIndex == 0{
 		return true
-	}
-	if term > rf.log[len(rf.log)-1].Term {
-		return true
-	}else if term == rf.log[len(rf.log)-1].Term {
-		//那么日志比较长的那个就更加新。
-		if index >= rf.log[len(rf.log)-1].LogIndex {
+	}else if len(rf.log) != 0 {
+		if term > rf.log[len(rf.log)-1].Term {
 			return true
+		}else if term == rf.log[len(rf.log)-1].Term {
+			//那么日志比较长的那个就更加新。
+			if index >= rf.log[len(rf.log)-1].LogIndex {
+				return true
+			}else {
+				return false
+			}
 		}else {
 			return false
 		}
-	}else {
-		return false
+	} else {
+		if term > rf.LastIncludedTerm {
+			return true
+		}else if term == rf.LastIncludedTerm {
+			//那么日志比较长的那个就更加新。
+			if index >= rf.LastIncludedIndex {
+				return true
+			}else {
+				return false
+			}
+		}else {
+			return false
+		}
 	}
 }

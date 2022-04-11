@@ -59,8 +59,11 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							rf.mu.Unlock()
 							return
 						}
-						rf.nextIndex[serverId] = rf.LastIncludedIndex + len(rf.log) + 1
+						//rf.nextIndex[serverId] = rf.LastIncludedIndex + len(rf.log) + 1
+						rf.nextIndex[serverId] = args.LastIncludedIndex + 1
 						rf.matchIndex[serverId] = args.LastIncludedIndex
+						DPrintf("peer[%d]给peer[%d]发送快照RPC之后nextIndex[%d]=%d, matchIndex[%d]=%d",
+							rf.me, serverId, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
 						rf.CheckMatchIndexL(args.LastIncludedIndex)
 						rf.mu.Unlock()
 					} else {
@@ -78,7 +81,8 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 										//说明是旧leader还在发送的消息，直接退出即可
 										return
 									}
-									DPrintf("peer[%d] len(rf.log)=%d,prevLogIndex[%d]=%d", rf.me, len(rf.log), serverId, prevLogIndex)
+									DPrintf("peer[%d] len(rf.log)=%d,prevLogIndex[%d]=%d",
+										rf.me, len(rf.log), serverId, prevLogIndex)
 									prevLogTerm = rf.log[rf.LogIndexToLogArrayIndex(prevLogIndex)].Term
 								}
 							}
@@ -133,10 +137,11 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							return
 						}else {
 							//reply.Success==true
-							rf.nextIndex[serverId] = endIndex + 1
-							rf.matchIndex[serverId] = endIndex
-							DPrintf("更新peer[%d]的nextIndex[%d]=%d,matchIndex[%d]=%d", rf.me, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
-							rf.CheckMatchIndexL(endIndex)
+							rf.nextIndex[serverId] = endIndex + 1 + rf.LastIncludedIndex
+							rf.matchIndex[serverId] = endIndex + rf.LastIncludedIndex
+							DPrintf("更新peer[%d]的nextIndex[%d]=%d,matchIndex[%d]=%d",
+								rf.me, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
+							rf.CheckMatchIndexL(endIndex + rf.LastIncludedIndex)
 						}
 						rf.mu.Unlock()
 					}
@@ -173,6 +178,7 @@ func (rf *Raft) AppendLogsL() {
 		for _,messages := range Messages{
 			rf.applyCh<-messages
 		}
+		DPrintf("applyCh应用层全部读取")
 	}
 }
 
@@ -247,15 +253,15 @@ func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
 	}
 	// Lab3B 说明在PrevLogIndex快照内且不是快照最后一个Log
 	if rf.LastIncludedIndex > PrevLogIndex {
-		return false, PrevLogIndex - 1
+		return false, PrevLogIndex
 	} else if rf.LastIncludedIndex == PrevLogIndex { // 说明在快照内且是快照最后一个Log
 		if rf.LastIncludedTerm != PrevLogTerm { // 冲突
-			return false, PrevLogIndex - 1
+			return false, PrevLogIndex
 		}
 		return true, conflictIndex
 	}
 	if len(rf.log) == 0 {
-		return false, 1
+		return false, 1 + rf.LastIncludedIndex
 	}
 
 	//PrevLogIndex-1才是PrevLogIndex对应日志的下标
@@ -273,7 +279,7 @@ func (rf *Raft) Rule2AndRule3L(PrevLogIndex int, PrevLogTerm int) (bool, int) {
 		conflictIndex = rf.log[len(rf.log)-1].LogIndex + 1 //11,对应S1
 		return false, conflictIndex
 	}
-	DPrintf("peer[%d]:rf.log[PrevLogIndex-1].Term=%d,PrevLogTerm=%d", rf.me, rf.log[PrevLogIndex-1].Term, PrevLogTerm)
+	DPrintf("peer[%d]:rf.log[rf.LogIndexToLogArrayIndex(PrevLogIndex)].Term=%d,PrevLogTerm=%d", rf.me, rf.log[rf.LogIndexToLogArrayIndex(PrevLogIndex)].Term, PrevLogTerm)
 	if rf.log[rf.LogIndexToLogArrayIndex(PrevLogIndex)].Term == PrevLogTerm {
 		return true, conflictIndex
 	}
@@ -310,7 +316,7 @@ func (rf *Raft) CheckMatchIndexL(index int) {
 			count++
 		}
 	}
-	if count >= len(rf.peers)/2+1 && rf.currentTerm == rf.log[index - 1].Term{
+	if count >= len(rf.peers)/2+1 && rf.currentTerm == rf.log[rf.LogIndexToLogArrayIndex(index)].Term{
 		DPrintf("Leader=peer[%d]更新commitIndex为%d", rf.me, index)
 		rf.commitIndex = index
 		rf.AppendLogsL()

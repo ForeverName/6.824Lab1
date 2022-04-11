@@ -633,7 +633,8 @@ func TestSnapshotRPC3B(t *testing.T) {
 	check(cfg, t, ck, "a", "A")
 
 	// a bunch of puts into the majority partition.
-	cfg.partition([]int{0, 1}, []int{2})
+	DPrintf("step0")
+	cfg.partition([]int{0, 1}, []int{2}) //peer[0] peer[1]在一个分区， peer[2]在一个分区
 	{
 		ck1 := cfg.makeClient([]int{0, 1})
 		for i := 0; i < 50; i++ {
@@ -642,14 +643,14 @@ func TestSnapshotRPC3B(t *testing.T) {
 		time.Sleep(electionTimeout)
 		Put(cfg, ck1, "b", "B")
 	}
-
+	DPrintf("测试日志添加完毕。。。。。。step1")
 	// check that the majority partition has thrown away
-	// most of its log entries.
+	// most of its log entries.  检查多数分区是否已丢弃其大部分日志条目。
 	sz := cfg.LogSize()
 	if sz > 8*maxraftstate {
 		t.Fatalf("logs were not trimmed (%v > 8*%v)", sz, maxraftstate)
 	}
-
+	DPrintf("现在使0和2连接，1独立........step2")
 	// now make group that requires participation of
 	// lagging server, so that it has to catch up.
 	cfg.partition([]int{0, 2}, []int{1})
@@ -662,7 +663,7 @@ func TestSnapshotRPC3B(t *testing.T) {
 		check(cfg, t, ck1, "1", "1")
 		check(cfg, t, ck1, "49", "49")
 	}
-
+	DPrintf("现在使所有服务器都互相连接........step3")
 	// now everybody
 	cfg.partition([]int{0, 1, 2}, []int{})
 
