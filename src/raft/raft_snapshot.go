@@ -42,8 +42,11 @@ func (rf *Raft) InstallSnapshotToApplication() {
 		LastIncludedIndex: rf.LastIncludedIndex,
 		LastIncludedTerm: rf.LastIncludedTerm,
 	}
-	rf.lastApplied = rf.LastIncludedIndex
+	if rf.lastApplied < rf.LastIncludedIndex {
+		rf.lastApplied = rf.LastIncludedIndex
+	}
 	rf.applyCh <- applyMsg
+	DPrintf("peer[%d]崩溃恢复完成", rf.me)
 }
 
 // 处理leader发送给follow的快照

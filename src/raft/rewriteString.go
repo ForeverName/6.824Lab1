@@ -20,7 +20,7 @@ func (a RequestVoteArgs) String() string {
 }
 
 func (a ApplyMsg) String() string {
-	return fmt.Sprintf("ApplyMsg{CommandValid:%t, Command:%v, CommandIndex:%d, Snapshot:%s, " +
+	return fmt.Sprintf("ApplyMsg{CommandValid:%t, Command:%v, CommandIndex:%d, Snapshot:%v, " +
 		"LastIncludedIndex:%d, LastIncludedTerm:%d}", a.CommandValid, a.Command, a.CommandIndex, a.Snapshot,
 		a.LastIncludedIndex, a.LastIncludedTerm)
 }

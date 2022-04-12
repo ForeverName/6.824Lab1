@@ -137,11 +137,14 @@ func (rf *Raft) AppendEntyiesOrHeartbeat() {
 							return
 						}else {
 							//reply.Success==true
-							rf.nextIndex[serverId] = endIndex + 1 + rf.LastIncludedIndex
-							rf.matchIndex[serverId] = endIndex + rf.LastIncludedIndex
+							// 这里不能使用rf.nextIndex[serverId] = endIndex + rf.LastIncludedIndex + 1,
+							//因为enIndex=len(rf.log),如果在发送RPC中压缩快照了，那么len(rf.log)会变短，而endIndex还是原来的长度，
+							//会导致下标出错，  也不能直接使用len(rf.log)，因为在并发中也不能保证len(rf.log)在发送RPC前后会保持不变
+							rf.nextIndex[serverId] = prevLogIndex + len(entry) + 1
+							rf.matchIndex[serverId] = prevLogIndex + len(entry)
 							DPrintf("更新peer[%d]的nextIndex[%d]=%d,matchIndex[%d]=%d",
 								rf.me, serverId, rf.nextIndex[serverId], serverId, rf.matchIndex[serverId])
-							rf.CheckMatchIndexL(endIndex + rf.LastIncludedIndex)
+							rf.CheckMatchIndexL(prevLogIndex + len(entry))
 						}
 						rf.mu.Unlock()
 					}
@@ -166,6 +169,7 @@ func (rf *Raft) AppendLogsL() {
 
 		for rf.lastApplied < rf.commitIndex {
 			rf.lastApplied +=1
+			DPrintf("peer[%d]的lastApplied=%d", rf.me,rf.lastApplied)
 			Messages = append(Messages,ApplyMsg{
 				CommandValid: true,
 				CommandIndex: rf.lastApplied,
@@ -178,7 +182,6 @@ func (rf *Raft) AppendLogsL() {
 		for _,messages := range Messages{
 			rf.applyCh<-messages
 		}
-		DPrintf("applyCh应用层全部读取")
 	}
 }
 
@@ -291,6 +294,10 @@ func (rf *Raft) updateCommitIndexL(leaderCommitIndex int) {
 	DPrintf("leaderCommitIndex=%d,原来peer[%d].commitIndex=%d", leaderCommitIndex, rf.me, rf.commitIndex)
 	//还有一种情况，当follow还没接收到日志，而心跳RPC已经到了，如果不做处理，会导致下标rf.log[len(rf.log) - 1]越界
 	if len(rf.log) == 0 {
+		if rf.LastIncludedIndex > rf.commitIndex {
+			rf.commitIndex = rf.LastIncludedIndex
+			rf.AppendLogsL()
+		}
 		return
 	}
 	if leaderCommitIndex > rf.commitIndex {
@@ -315,6 +322,13 @@ func (rf *Raft) CheckMatchIndexL(index int) {
 		if matchVal >= index {
 			count++
 		}
+	}
+	// 说明要比较的索引在快照内，不在Log中，快照内的日志肯定已经应用成功了
+	if rf.LogIndexToLogArrayIndex(index) < 0 {
+		if rf.lastApplied < index {
+			rf.lastApplied = index
+		}
+		return
 	}
 	if count >= len(rf.peers)/2+1 && rf.currentTerm == rf.log[rf.LogIndexToLogArrayIndex(index)].Term{
 		DPrintf("Leader=peer[%d]更新commitIndex为%d", rf.me, index)

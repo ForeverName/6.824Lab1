@@ -36,5 +36,6 @@ func (kv *KVServer) InstallSnapshot(snapshot []byte, lastIncludedIndex int) {
 		kv.DuplicateDetection = duplicateDetection
 	}
 	kv.ApplyLogIndex = lastIncludedIndex
+	kv.rf.SetLastApplied(lastIncludedIndex)
 }
 

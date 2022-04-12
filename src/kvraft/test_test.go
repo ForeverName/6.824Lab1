@@ -245,6 +245,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 		if crash {
 			// log.Printf("shutdown servers\n")
 			for i := 0; i < nservers; i++ {
+				DPrintf("peer[%d]crash", i)
 				cfg.ShutdownServer(i)
 			}
 			// Wait for a while for servers to shutdown, since
@@ -253,6 +254,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 			// log.Printf("restart servers\n")
 			// crash and re-start all
 			for i := 0; i < nservers; i++ {
+				DPrintf("peer[%d]start", i)
 				cfg.StartServer(i)
 			}
 			cfg.ConnectAll()

@@ -233,7 +233,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
-	kv.mu.Lock()
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
@@ -241,7 +240,10 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.KVDB = make(map[string]string)
 	kv.waitApplyCh = make(map[int]chan Op)
 	kv.DuplicateDetection = make(map[int64]int)
-	kv.mu.Unlock()
+	snapshot := persister.ReadSnapshot()
+	if len(snapshot) > 0{
+		kv.InstallSnapshot(snapshot, kv.rf.LastIncludedIndex)
+	}
 	go kv.ConsumeApply()
 	return kv
 }
@@ -259,7 +261,6 @@ func (kv *KVServer) ConsumeApply() {
 		op := msg.Command.(Op)
 		clientId := op.ClientId
 		requestId := op.RequestId
-		kv.ApplyLogIndex = logIndex
 		if kv.maxraftstate != -1 && kv.rf.CheckLogSize(kv.maxraftstate) {
 			kv.mu.Lock()
 			w := new(bytes.Buffer)
@@ -274,6 +275,7 @@ func (kv *KVServer) ConsumeApply() {
 			}(snapshot, applyLogIndex)
 		}
 		kv.mu.Lock()
+		kv.ApplyLogIndex = logIndex
 		if kv.RepeatCheckL(clientId, requestId) {
 			kv.mu.Unlock()
 			continue

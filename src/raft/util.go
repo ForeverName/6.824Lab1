@@ -48,8 +48,6 @@ func (rf *Raft) InitNextIndexL() {
 }
 //检查是否需要进行快照
 func (rf *Raft) CheckLogSize(maxraftstate int) bool {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	if rf.persister.RaftStateSize() >= maxraftstate {
 		return true
 	}
@@ -57,6 +55,14 @@ func (rf *Raft) CheckLogSize(maxraftstate int) bool {
 }
 //日志Index转换为Log数组下标
 func (rf *Raft) LogIndexToLogArrayIndex(LogIndex int) int {
-	DPrintf("LogIndex=%d, rf.LastIncludedIndex=%d, LogIndex - rf.LastIncludedIndex - 1=%d", LogIndex, rf.LastIncludedIndex, LogIndex - rf.LastIncludedIndex - 1)
+	DPrintf("peer[%d]调用LogIndex=%d, rf.LastIncludedIndex=%d, LogIndex - rf.LastIncludedIndex - 1=%d", rf.me, LogIndex, rf.LastIncludedIndex, LogIndex - rf.LastIncludedIndex - 1)
 	return LogIndex - rf.LastIncludedIndex - 1
+}
+//用于崩溃恢复快照时恢复raft的lastApplied值
+func (rf *Raft) SetLastApplied(lastApplied int)  {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.lastApplied < lastApplied {
+		rf.lastApplied = lastApplied
+	}
 }

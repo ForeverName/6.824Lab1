@@ -379,12 +379,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyCond = sync.NewCond(&rf.mu)
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
-	rf.mu.Unlock()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-	if rf.currentTerm != 0 {
+	/*if rf.currentTerm != 0 {
+		DPrintf("peer[%d]开始安装快照到KvServer", rf.me)
 		rf.InstallSnapshotToApplication()
-	}
+	}*/
+	rf.mu.Unlock()
 	DPrintf("peer[%d]初始化成功,且currentTerm=%d,votedFor=%d,log=%v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 	go rf.ElectionTicker()
 	//go rf.AppendEntyiesOrHeartbeat()
