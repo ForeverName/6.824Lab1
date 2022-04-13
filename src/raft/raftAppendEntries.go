@@ -236,7 +236,15 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntries, reply *AppendEntriesRe
 	//追加新的日志条目
 	DPrintf("peer[%d]原来的日志条目为%v,追加的日志条目为%v", rf.me, rf.log, args.Entries)
 	//去除重复的才能添加到日志里面
-	rf.log = append(rf.log[:rf.LogIndexToLogArrayIndex(args.PrevLogIndex+1)], args.Entries...)
+	if rf.LastIncludedIndex >= args.PrevLogIndex {
+		for i, entry := range args.Entries {
+			if entry.LogIndex == rf.LastIncludedIndex + 1 {
+				rf.log = append(rf.log[:0], args.Entries[i:]...)
+			}
+		}
+	} else {
+		rf.log = append(rf.log[:rf.LogIndexToLogArrayIndex(args.PrevLogIndex+1)], args.Entries...)
+	}
 	if len(args.Entries) != 0 {
 		rf.persist()
 	}
