@@ -15,7 +15,7 @@ type ShardMaster struct {
 
 	// Your data here.
 
-	configs []Config // indexed by config num
+	configs []Config // indexed by config num		由配置编号索引
 }
 
 
@@ -42,9 +42,9 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 
 
 //
-// the tester calls Kill() when a ShardMaster instance won't
-// be needed again. you are not required to do anything
-// in Kill(), but it might be convenient to (for example)
+// the tester calls Kill() when a ShardMaster instance won't	当不再需要 ShardMaster 实例时，测试人员调用 Kill()。
+// be needed again. you are not required to do anything			您不需要在 Kill() 中执行任何操作，但（例如）
+// in Kill(), but it might be convenient to (for example)		关闭此实例的调试输出可能会很方便。
 // turn off debug output from this instance.
 //
 func (sm *ShardMaster) Kill() {
@@ -52,16 +52,16 @@ func (sm *ShardMaster) Kill() {
 	// Your code here, if desired.
 }
 
-// needed by shardkv tester
+// needed by shardkv tester			shardkv 测试人员需要
 func (sm *ShardMaster) Raft() *raft.Raft {
 	return sm.rf
 }
 
 //
-// servers[] contains the ports of the set of
+// servers[] contains the ports of the set of	servers[] 包含将通过 Paxos 协作以形成容错 shardmaster 服务的一组服务器的端口。
 // servers that will cooperate via Paxos to
 // form the fault-tolerant shardmaster service.
-// me is the index of the current server in servers[].
+// me is the index of the current server in servers[].		me 是 servers[] 中当前服务器的索引。
 //
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardMaster {
 	sm := new(ShardMaster)
