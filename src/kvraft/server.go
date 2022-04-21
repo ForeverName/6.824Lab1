@@ -287,6 +287,10 @@ func (kv *KVServer) ConsumeApply() {
 			case "Append":
 				kv.KVDB[op.Key] += op.Value
 			}
+			// 感觉这里是有Bug的，比如当leader执行到上面的的 case "Append"追加完成之后，突然崩溃了，并没有执行下面的kv.DuplicateDetection[clientId] = requestId
+			// 然后重新连接之后其他节点还是没有选择出leader，然后这个崩溃的节点最终成为leader，之后client重新发送上一个append操作，由于检测
+			// 重复请求没有检测出来，导致这个追加操作重复请求了。 （但是测试了几千遍也没有出现这个bug，说明概率非常低）
+			// 解决方案想法是：选举leader节点的时候也要比较每个节点存储的每个client的requestId最大值，只有最大的才有资格成为leader。
 			kv.DuplicateDetection[clientId] = requestId
 			DPrintf("kvserver[%d]的map为:%v", kv.me, kv.KVDB)
 		}
