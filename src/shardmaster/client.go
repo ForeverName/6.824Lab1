@@ -34,6 +34,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 
 func (ck *Clerk) Query(num int) Config {
 	// Your code here.
+	ck.requestId++
 	args := QueryArgs{
 		Num: num,
 		ClientId: ck.clientId,
@@ -55,6 +56,7 @@ func (ck *Clerk) Query(num int) Config {
 
 func (ck *Clerk) Join(servers map[int][]string) {
 	// Your code here.
+	ck.requestId++
 	args := JoinArgs{
 		Servers: servers,
 		ClientId: ck.clientId,
@@ -76,6 +78,7 @@ func (ck *Clerk) Join(servers map[int][]string) {
 
 func (ck *Clerk) Leave(gids []int) {
 	// Your code here.
+	ck.requestId++
 	args := LeaveArgs{
 		GIDs: gids,
 		ClientId: ck.clientId,
@@ -97,6 +100,7 @@ func (ck *Clerk) Leave(gids []int) {
 
 func (ck *Clerk) Move(shard int, gid int) {
 	// Your code here.
+	ck.requestId++
 	args := MoveArgs{
 		Shard: shard,
 		GID: gid,
