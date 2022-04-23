@@ -40,6 +40,10 @@ type Clerk struct {
 	config   shardmaster.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+	requestId int //为了处理重复命令，对每个命令有一个唯一的序号
+	// recentLeaderId int
+	clientId int64 //唯一定义每个client的id值
+
 }
 
 //
@@ -56,6 +60,9 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardmaster.MakeClerk(masters)
 	ck.make_end = make_end
 	// You'll have to add code here.
+	ck.clientId = nrand()
+	// 获取最新的配置
+	ck.config = ck.sm.Query(-1)
 	return ck
 }
 
@@ -66,8 +73,12 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.					您将不得不修改此功能。
 //
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{}
-	args.Key = key
+	ck.requestId++
+	args := GetArgs{
+		Key: key,
+		ClientId: ck.clientId,
+		RequestId: ck.requestId,
+	}
 
 	for {
 		shard := key2shard(key)
@@ -100,11 +111,14 @@ func (ck *Clerk) Get(key string) string {
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	args := PutAppendArgs{}
-	args.Key = key
-	args.Value = value
-	args.Op = op
-
+	ck.requestId++
+	args := PutAppendArgs{
+		Key: key,
+		Value: value,
+		Op: op,
+		ClientId: ck.clientId,
+		RequestId: ck.requestId,
+	}
 
 	for {
 		shard := key2shard(key)
