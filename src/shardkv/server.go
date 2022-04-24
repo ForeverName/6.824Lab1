@@ -4,6 +4,7 @@ package shardkv
 // import "../shardmaster"
 import (
 	"../labrpc"
+	"../shardmaster"
 	"sync/atomic"
 	"time"
 )
@@ -41,6 +42,8 @@ type ShardKV struct {
 	waitApplyCh map[int]chan Op // map[logIndex]chan 对于每一个logIndex建立一个对应的通道来通知已经完成
 	DuplicateDetection map[int64]int //存储每一个clientId对应的最后一个RequestId，为了防止重复请求
 
+	config shardmaster.Config
+	sm       *shardmaster.Clerk
 	ApplyLogIndex int
 }
 
@@ -184,6 +187,11 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
+	kv.KVDB = make(map[string]string)
+	kv.waitApplyCh = make(map[int]chan Op)
+	kv.DuplicateDetection = make(map[int64]int)
 
+	kv.sm = shardmaster.MakeClerk(masters)
+	kv.config = kv.sm.Query(-1)
 	return kv
 }
