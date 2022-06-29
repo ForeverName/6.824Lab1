@@ -1,10 +1,10 @@
 package shardkv
 
 //
-// client code to talk to a sharded key/value service.
+// client code to talk to a sharded key/value service.		与分片键/值服务对话的客户端代码。
 //
-// the client first talks to the shardmaster to find out
-// the assignment of shards (keys) to groups, and then
+// the client first talks to the shardmaster to find out	客户端首先与 shardmaster 对话以找出分片（keys）到组的分配，
+// the assignment of shards (keys) to groups, and then		然后与持有key分片的组对话。
 // talks to the group that holds the key's shard.
 //
 
@@ -15,7 +15,7 @@ import "../shardmaster"
 import "time"
 
 //
-// which shard is a key in?
+// which shard is a key in?		key在哪个分片中？ 请使用此功能，请勿更改。
 // please use this function,
 // and please do not change it.
 //
@@ -40,15 +40,19 @@ type Clerk struct {
 	config   shardmaster.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+	requestId int //为了处理重复命令，对每个命令有一个唯一的序号
+	// recentLeaderId int
+	clientId int64 //唯一定义每个client的id值
+
 }
 
 //
-// the tester calls MakeClerk.
+// the tester calls MakeClerk.		测试人员调用 MakeClerk。
 //
-// masters[] is needed to call shardmaster.MakeClerk().
+// masters[] is needed to call shardmaster.MakeClerk().		masters[] 需要调用 shardmaster.MakeClerk()。
 //
-// make_end(servername) turns a server name from a
-// Config.Groups[gid][i] into a labrpc.ClientEnd on which you can
+// make_end(servername) turns a server name from a			make_end(servername) 将服务器名称从 Config.Groups[gid][i]
+// Config.Groups[gid][i] into a labrpc.ClientEnd on which you can	转换为您可以发送 RPC 的 labrpc.ClientEnd。
 // send RPCs.
 //
 func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *Clerk {
@@ -56,24 +60,31 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardmaster.MakeClerk(masters)
 	ck.make_end = make_end
 	// You'll have to add code here.
+	ck.clientId = nrand()
+	// 获取最新的配置
+	ck.config = ck.sm.Query(-1)
 	return ck
 }
 
 //
-// fetch the current value for a key.
-// returns "" if the key does not exist.
-// keeps trying forever in the face of all other errors.
-// You will have to modify this function.
+// fetch the current value for a key.						获取key的当前值。
+// returns "" if the key does not exist.					如果键不存在，则返回 ""。
+// keeps trying forever in the face of all other errors.	面对所有其他错误，不断尝试。
+// You will have to modify this function.					您将不得不修改此功能。
 //
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{}
-	args.Key = key
+	ck.requestId++
+	args := GetArgs{
+		Key: key,
+		ClientId: ck.clientId,
+		RequestId: ck.requestId,
+	}
 
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
-			// try each server for the shard.
+			// try each server for the shard.   尝试每个服务器的分片。
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
@@ -88,7 +99,7 @@ func (ck *Clerk) Get(key string) string {
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
-		// ask master for the latest configuration.
+		// ask master for the latest configuration.  向master请求最新配置。
 		ck.config = ck.sm.Query(-1)
 	}
 
@@ -96,15 +107,18 @@ func (ck *Clerk) Get(key string) string {
 }
 
 //
-// shared by Put and Append.
+// shared by Put and Append.				由 Put 和 Append 共享。
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	args := PutAppendArgs{}
-	args.Key = key
-	args.Value = value
-	args.Op = op
-
+	ck.requestId++
+	args := PutAppendArgs{
+		Key: key,
+		Value: value,
+		Op: op,
+		ClientId: ck.clientId,
+		RequestId: ck.requestId,
+	}
 
 	for {
 		shard := key2shard(key)

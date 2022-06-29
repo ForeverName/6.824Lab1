@@ -92,11 +92,13 @@ func TestBasic(t *testing.T) {
 	check(t, []int{}, ck)
 
 	var gid1 int = 1
+	DPrintf("Test:Join{1:[]string{x, y, z}}")
 	ck.Join(map[int][]string{gid1: []string{"x", "y", "z"}})
 	check(t, []int{gid1}, ck)
 	cfa[1] = ck.Query(-1)
 
 	var gid2 int = 2
+	DPrintf("Test:Join{2:[]string{a, b, c}}")
 	ck.Join(map[int][]string{gid2: []string{"a", "b", "c"}})
 	check(t, []int{gid1, gid2}, ck)
 	cfa[2] = ck.Query(-1)
@@ -110,7 +112,7 @@ func TestBasic(t *testing.T) {
 	if len(sa2) != 3 || sa2[0] != "a" || sa2[1] != "b" || sa2[2] != "c" {
 		t.Fatalf("wrong servers for gid %v: %v\n", gid2, sa2)
 	}
-
+	DPrintf("Test:leave{1}")
 	ck.Leave([]int{gid1})
 	check(t, []int{gid2}, ck)
 	cfa[4] = ck.Query(-1)
@@ -123,11 +125,14 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("Test: Historical queries ...\n")
 
 	for s := 0; s < nservers; s++ {
+		DPrintf("ShutdownServer[%d]", s)
 		cfg.ShutdownServer(s)
 		for i := 0; i < len(cfa); i++ {
 			c := ck.Query(cfa[i].Num)
+			DPrintf("c的config为%v, cfa[%d]的config为%v", c, i, cfa[i])
 			check_same_config(t, c, cfa[i])
 		}
+		DPrintf("StartServer[%d]", s)
 		cfg.StartServer(s)
 		cfg.ConnectAll()
 	}

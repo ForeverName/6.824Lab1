@@ -9,19 +9,18 @@ package raft
 //
 
 import (
-	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 import "time"
-import "math/rand"
-import "sync/atomic"
-import "sync"
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
 const RaftElectionTimeout = 1000 * time.Millisecond
 
-func TestInitialElection2A(t *testing.T) {
+/*func TestInitialElection2A(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -50,7 +49,7 @@ func TestInitialElection2A(t *testing.T) {
 	cfg.checkOneLeader()
 
 	cfg.end()
-}
+}*/
 
 func TestReElection2A(t *testing.T) {
 	servers := 3
@@ -60,27 +59,27 @@ func TestReElection2A(t *testing.T) {
 	cfg.begin("Test (2A): election after network failure")
 
 	leader1 := cfg.checkOneLeader()
-	//DPrintf("这里领导者掉线，应该再重新选举一个Leader")
+	DPrintf("这里领导者掉线，应该再重新选举一个Leader")
 	// if the leader disconnects, a new one should be elected.
 	cfg.disconnect(leader1)
 	cfg.checkOneLeader()
-	//DPrintf("旧领导者重新连接，应该不打扰新领导者")
+	DPrintf("旧领导者重新连接，应该不打扰新领导者")
 	// if the old leader rejoins, that shouldn't
 	// disturb the new leader.
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
-	//DPrintf("这里掉线大多数peer，应该无法再选出Leader")
+	DPrintf("这里掉线大多数peer，应该无法再选出Leader")
 	// if there's no quorum, no leader should
 	// be elected.
 	cfg.disconnect(leader2)
 	cfg.disconnect((leader2 + 1) % servers)
 	time.Sleep(2 * RaftElectionTimeout)
 	cfg.checkNoLeader()
-	//DPrintf("如果达到法定人数。应该重新选举Leader")
+	DPrintf("如果达到法定人数。应该重新选举Leader")
 	// if a quorum arises, it should elect a leader.
 	cfg.connect((leader2 + 1) % servers)
 	cfg.checkOneLeader()
-	//DPrintf("最后一个节点的重新加入不应阻止领导者的存在。")
+	DPrintf("最后一个节点的重新加入不应阻止领导者的存在。")
 	// re-join of last node shouldn't prevent leader from existing.
 	cfg.connect(leader2)
 	cfg.checkOneLeader()
@@ -184,15 +183,18 @@ func TestFailNoAgree2B(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
-
+	//如果太多关注者断开连接，则无法达成协议
 	cfg.begin("Test (2B): no agreement if too many followers disconnect")
 
 	cfg.one(10, servers, false)
 
-	// 3 of 5 followers disconnect
+	// 3 of 5 followers disconnect 5个中3个断开连接
 	leader := cfg.checkOneLeader()
+	DPrintf("peer[%d]断开连接", (leader + 1) % servers)
 	cfg.disconnect((leader + 1) % servers)
+	DPrintf("peer[%d]断开连接", (leader + 2) % servers)
 	cfg.disconnect((leader + 2) % servers)
+	DPrintf("peer[%d]断开连接", (leader + 3) % servers)
 	cfg.disconnect((leader + 3) % servers)
 
 	index, _, ok := cfg.rafts[leader].Start(20)
@@ -211,12 +213,15 @@ func TestFailNoAgree2B(t *testing.T) {
 	}
 
 	// repair
+	DPrintf("peer[%d]重新连接", (leader + 1) % servers)
 	cfg.connect((leader + 1) % servers)
+	DPrintf("peer[%d]重新连接", (leader + 2) % servers)
 	cfg.connect((leader + 2) % servers)
+	DPrintf("peer[%d]重新连接", (leader + 3) % servers)
 	cfg.connect((leader + 3) % servers)
 
 	// the disconnected majority may have chosen a leader from
-	// among their own ranks, forgetting index 2.
+	// among their own ranks, forgetting index 2. 脱节的大多数人可能从他们自己的队伍中选择了一位领导者，忘记了指数 2。
 	leader2 := cfg.checkOneLeader()
 	index2, _, ok2 := cfg.rafts[leader2].Start(30)
 	if ok2 == false {
@@ -336,33 +341,39 @@ func TestRejoin2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
-
+	//分区领导者的重新加入
 	cfg.begin("Test (2B): rejoin of partitioned leader")
 
 	cfg.one(101, servers, true)
 
 	// leader network failure
 	leader1 := cfg.checkOneLeader()
+	DPrintf("leader1=peer[%d]断开连接", leader1)
 	cfg.disconnect(leader1)
 
-	// make old leader try to agree on some entries
+	// make old leader try to agree on some entries 让老领导尝试就某些条目达成一致
+	DPrintf("让老领导peer[%d]尝试就某些条目达成一致", leader1)
 	cfg.rafts[leader1].Start(102)
 	cfg.rafts[leader1].Start(103)
 	cfg.rafts[leader1].Start(104)
 
-	// new leader commits, also for index=2
+	// new leader commits, also for index=2 新的领导者提交，也为 index=2
+	DPrintf("新的领导者提交，也为 index=2")
 	cfg.one(103, 2, true)
 
-	// new leader network failure
+	// new leader network failure 新领导者网络故障
 	leader2 := cfg.checkOneLeader()
+	DPrintf("新领导者peer[%d]网络故障", leader2)
 	cfg.disconnect(leader2)
 
-	// old leader connected again
+	// old leader connected again 老领导又连上了
+	DPrintf("老领导peer[%d]又连上了", leader1)
 	cfg.connect(leader1)
 
 	cfg.one(104, 2, true)
 
 	// all together now
+	DPrintf("新老领导者都连接上了")
 	cfg.connect(leader2)
 
 	cfg.one(105, servers, true)
@@ -566,23 +577,29 @@ func TestPersist12C(t *testing.T) {
 		cfg.start1(i)
 	}
 	for i := 0; i < servers; i++ {
+		DPrintf("perr[%d]断开连接", i)
 		cfg.disconnect(i)
+		DPrintf("peer[%d]重新连接", i)
 		cfg.connect(i)
 	}
 
 	cfg.one(12, servers, true)
 
 	leader1 := cfg.checkOneLeader()
+	DPrintf("leader=peer[%d]断开连接", leader1)
 	cfg.disconnect(leader1)
 	cfg.start1(leader1)
+	DPrintf("peer[%d]重新连接", leader1)
 	cfg.connect(leader1)
 
 	cfg.one(13, servers, true)
 
 	leader2 := cfg.checkOneLeader()
+	DPrintf("leader=peer[%d]断开连接", leader2)
 	cfg.disconnect(leader2)
 	cfg.one(14, servers-1, true)
 	cfg.start1(leader2)
+	DPrintf("peer[%d]重新连接", leader2)
 	cfg.connect(leader2)
 
 	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
@@ -607,39 +624,39 @@ func TestPersist22C(t *testing.T) {
 
 	index := 1
 	for iters := 0; iters < 5; iters++ {
-		cfg.one(10+index, servers, true)
+		cfg.one(10+index, servers, true) //11 14 17 20 23
 		index++
 
 		leader1 := cfg.checkOneLeader()
-
+		DPrintf("peer[%d]和peer[%d]disconnect断开连接", (leader1 + 1) % servers, (leader1 + 2) % servers)
 		cfg.disconnect((leader1 + 1) % servers)
 		cfg.disconnect((leader1 + 2) % servers)
 
-		cfg.one(10+index, servers-2, true)
+		cfg.one(10+index, servers-2, true) //12 15 18 21 24
 		index++
-
+		DPrintf("peer[%d],peer[%d]和peer[%d]disconnect断开连接", (leader1 + 0) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers)
 		cfg.disconnect((leader1 + 0) % servers)
 		cfg.disconnect((leader1 + 3) % servers)
 		cfg.disconnect((leader1 + 4) % servers)
-
+		DPrintf("peer[%d]和peer[%d]reconnect重新连接", (leader1 + 1) % servers, (leader1 + 2) % servers)
 		cfg.start1((leader1 + 1) % servers)
 		cfg.start1((leader1 + 2) % servers)
 		cfg.connect((leader1 + 1) % servers)
 		cfg.connect((leader1 + 2) % servers)
 
 		time.Sleep(RaftElectionTimeout)
-
+		DPrintf("peer[%d]reconnect重新连接", (leader1 + 3) % servers)
 		cfg.start1((leader1 + 3) % servers)
 		cfg.connect((leader1 + 3) % servers)
 
-		cfg.one(10+index, servers-2, true)
+		cfg.one(10+index, servers-2, true) //13 16 19 22 25
 		index++
-
+		DPrintf("peer[%d]和peer[%d]reconnect重新连接", (leader1 + 4) % servers, (leader1 + 0) % servers)
 		cfg.connect((leader1 + 4) % servers)
 		cfg.connect((leader1 + 0) % servers)
 	}
 
-	cfg.one(1000, servers, true)
+	cfg.one(1000, servers, true) //1000
 
 	cfg.end()
 }
@@ -714,6 +731,7 @@ func TestFigure82C(t *testing.T) {
 		}
 
 		if leader != -1 {
+			DPrintf("leader:peer[%d]disconnect断开连接", leader)
 			cfg.crash1(leader)
 			nup -= 1
 		}
@@ -721,6 +739,7 @@ func TestFigure82C(t *testing.T) {
 		if nup < 3 {
 			s := rand.Int() % servers
 			if cfg.rafts[s] == nil {
+				DPrintf("peer[%d]reconnect重新连接", s)
 				cfg.start1(s)
 				cfg.connect(s)
 				nup += 1
